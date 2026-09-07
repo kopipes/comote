@@ -48,6 +48,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 ## Current MVP surface
 
 - Private login with remembered device label
+- Create blank Git projects or import public GitHub repositories from the Projects pane
 - Project and Codex thread discovery
 - New/resumed natural-language sessions
 - Live assistant, command, file-change, status, and approval events

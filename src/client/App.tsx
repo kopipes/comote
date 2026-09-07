@@ -117,6 +117,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [git, setGit] = useState<GitState | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [addingProject, setAddingProject] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
   const streamRef = useRef<EventSource | null>(null);
@@ -265,6 +266,14 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
     onLoggedOut();
   }
 
+  function projectAdded(next: Project) {
+    setProjects((current) => [...current.filter((item) => item.id !== next.id), next]
+      .sort((a, b) => a.name.localeCompare(b.name)));
+    setProject(next);
+    setAddingProject(false);
+    setMobilePanel("chat");
+  }
+
   return (
     <div className="app-shell" data-panel={mobilePanel}>
       <header className="topbar">
@@ -277,7 +286,10 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       </header>
 
       <aside className="projects-pane">
-        <div className="pane-heading"><span>Projects</span><span className="count">{projects.length}</span></div>
+        <div className="pane-heading">
+          <span>Projects <span className="count">{projects.length}</span></span>
+          <button className="new-button" onClick={() => setAddingProject(true)}>＋ Add</button>
+        </div>
         <div className="project-list">
           {projects.map((item) => (
             <button key={item.id} className={`project-row ${project?.id === item.id ? "active" : ""}`} onClick={() => setProject(item)}>
@@ -308,7 +320,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       <main className="conversation-pane">
         {error && <button className="error-banner" onClick={() => setError("")}>{error}<span>×</span></button>}
         {!thread ? (
-          <EmptyWorkspace hasProject={Boolean(project)} onNew={newThread} />
+          <EmptyWorkspace hasProject={Boolean(project)} onNew={newThread} onAdd={() => setAddingProject(true)} />
         ) : (
           <>
             <div className="conversation-header">
@@ -336,6 +348,8 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
         <button className={mobilePanel === "chat" ? "active" : ""} onClick={() => setMobilePanel("chat")}>Chat</button>
         <button className={mobilePanel === "changes" ? "active" : ""} onClick={() => setMobilePanel("changes")}>Changes</button>
       </nav>
+
+      {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onCreated={projectAdded} />}
     </div>
   );
 }
@@ -344,14 +358,81 @@ function Brand({ large = false }: { large?: boolean }) {
   return <div className={`brand ${large ? "large" : ""}`}><span className="brand-mark">C</span><span>comote</span></div>;
 }
 
-function EmptyWorkspace({ hasProject, onNew }: { hasProject: boolean; onNew: () => void }) {
+function EmptyWorkspace({ hasProject, onNew, onAdd }: { hasProject: boolean; onNew: () => void; onAdd: () => void }) {
   return (
     <div className="empty-workspace">
       <span className="empty-orbit">C</span>
       <p className="eyebrow">Secure coding, from anywhere</p>
       <h2>{hasProject ? "What should we build next?" : "Add your first Git project"}</h2>
       <p>{hasProject ? "Start a continuous Codex session. You can leave on your phone and continue later from your laptop." : "Comote only exposes repositories registered under its protected VPS workspace."}</p>
-      {hasProject && <button className="primary" onClick={onNew}>Start a new session</button>}
+      <button className="primary" onClick={hasProject ? onNew : onAdd}>{hasProject ? "Start a new session" : "Add project"}</button>
+    </div>
+  );
+}
+
+function AddProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
+  const [mode, setMode] = useState<"create" | "import">("import");
+  const [name, setName] = useState("");
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const payload = mode === "create"
+        ? { mode, name }
+        : { mode, name, repositoryUrl };
+      const { project } = await api.post<{ project: Project }>("/api/projects", payload);
+      onCreated(project);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) onClose();
+    }}>
+      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="add-project-title">
+        <div className="dialog-header">
+          <div><p className="eyebrow">VPS workspace</p><h2 id="add-project-title">Add project</h2></div>
+          <button className="icon-button" type="button" onClick={onClose} disabled={busy} aria-label="Close">×</button>
+        </div>
+        <div className="mode-tabs" role="tablist" aria-label="Project source">
+          <button type="button" role="tab" aria-selected={mode === "import"} className={mode === "import" ? "active" : ""} onClick={() => { setMode("import"); setError(""); }}>Import GitHub</button>
+          <button type="button" role="tab" aria-selected={mode === "create"} className={mode === "create" ? "active" : ""} onClick={() => { setMode("create"); setError(""); }}>Create new</button>
+        </div>
+        <form onSubmit={submit}>
+          {mode === "import" ? (
+            <>
+              <label>
+                GitHub repository URL
+                <input type="url" value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/project" required autoFocus />
+              </label>
+              <label>
+                Project name <span className="optional">optional</span>
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Uses the repository name" maxLength={64} />
+              </label>
+              <p className="field-help">Public repositories import immediately. Private repositories require GitHub access configured on this VPS.</p>
+            </>
+          ) : (
+            <label>
+              Project name
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="my-new-app" maxLength={64} required autoFocus />
+            </label>
+          )}
+          {error && <p className="form-error">{error}</p>}
+          <div className="dialog-actions">
+            <button className="secondary" type="button" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="primary" disabled={busy || (mode === "create" ? !name.trim() : !repositoryUrl.trim())}>{busy ? (mode === "import" ? "Importing…" : "Creating…") : (mode === "import" ? "Import project" : "Create project")}</button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

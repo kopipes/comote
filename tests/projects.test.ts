@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { ProjectRegistry } from "../src/server/projects.js";
+import { parseGithubRepository, ProjectRegistry, validateProjectName } from "../src/server/projects.js";
 
 test("project registry exposes only Git workspaces directly below its root", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
@@ -27,4 +27,41 @@ test("project registry rejects symlinks that escape the root", async () => {
   const registry = new ProjectRegistry(root);
   await registry.init();
   await assert.rejects(() => registry.get(Buffer.from("escape").toString("base64url")), /outside/);
+});
+
+test("project registry creates a new main-branch Git workspace", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
+  const registry = new ProjectRegistry(root);
+  await registry.init();
+
+  const project = await registry.create("new-app");
+  assert.equal(project.name, "new-app");
+  assert.ok(await stat(path.join(project.path, ".git")));
+  await assert.rejects(() => registry.create("new-app"), /already exists/);
+});
+
+test("project names cannot escape or impersonate Git metadata", () => {
+  assert.equal(validateProjectName("my-app_2"), "my-app_2");
+  for (const value of ["../escape", ".hidden", "repo.git", "two words", ""]) {
+    assert.throws(() => validateProjectName(value), /Invalid project name/);
+  }
+});
+
+test("GitHub imports accept only canonical HTTPS repository URLs", () => {
+  assert.deepEqual(parseGithubRepository("https://github.com/kopipes/comote"), {
+    url: "https://github.com/kopipes/comote.git",
+    name: "comote",
+  });
+  assert.deepEqual(parseGithubRepository("https://github.com/kopipes/comote.git"), {
+    url: "https://github.com/kopipes/comote.git",
+    name: "comote",
+  });
+  for (const value of [
+    "git@github.com:kopipes/comote.git",
+    "https://example.com/kopipes/comote",
+    "https://token@github.com/kopipes/comote",
+    "https://github.com/kopipes/comote/issues",
+  ]) {
+    assert.throws(() => parseGithubRepository(value), /Invalid GitHub/);
+  }
 });

@@ -1,5 +1,10 @@
-import { readdir, realpath, stat } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, readdir, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const projectNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface Project {
   id: string;
@@ -9,6 +14,7 @@ export interface Project {
 
 export class ProjectRegistry {
   private rootRealPath = "";
+  private creating = new Set<string>();
 
   constructor(private readonly root: string) {}
 
@@ -44,6 +50,88 @@ export class ProjectRegistry {
     const git = await stat(path.join(resolved, ".git")).catch(() => null);
     if (!git) throw new Error("Project is not a Git workspace.");
     return { id, name, path: resolved };
+  }
+
+  async create(nameInput: string): Promise<Project> {
+    const name = validateProjectName(nameInput);
+    return this.withNewProject(name, async (projectPath) => {
+      await mkdir(projectPath, { mode: 0o750 });
+      await runGit(this.rootRealPath, ["init", "-b", "main", projectPath]);
+      await configureIdentity(projectPath);
+    });
+  }
+
+  async importGithub(repositoryUrlInput: string, nameInput?: string): Promise<Project> {
+    const repository = parseGithubRepository(repositoryUrlInput);
+    const name = validateProjectName(nameInput?.trim() || repository.name);
+    return this.withNewProject(name, async (projectPath) => {
+      await runGit(this.rootRealPath, ["clone", "--origin", "origin", repository.url, projectPath], 120_000);
+      await configureIdentity(projectPath);
+    });
+  }
+
+  private async withNewProject(name: string, operation: (projectPath: string) => Promise<void>): Promise<Project> {
+    if (!this.rootRealPath) throw new Error("Project registry is not initialized.");
+    if (this.creating.has(name)) throw new Error("Project creation is already in progress.");
+    const projectPath = path.join(this.rootRealPath, name);
+    if (await stat(projectPath).catch(() => null)) throw new Error(`Project '${name}' already exists.`);
+
+    this.creating.add(name);
+    try {
+      await operation(projectPath);
+      return { id: encodeId(name), name, path: await realpath(projectPath) };
+    } catch (error) {
+      await rm(projectPath, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    } finally {
+      this.creating.delete(name);
+    }
+  }
+}
+
+export function validateProjectName(value: string): string {
+  const name = value.trim();
+  if (!projectNamePattern.test(name) || name === "." || name === ".." || name.endsWith(".git")) {
+    throw new Error("Invalid project name. Use 1–64 letters, numbers, dots, dashes, or underscores.");
+  }
+  return name;
+}
+
+export function parseGithubRepository(value: string): { url: string; name: string } {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    throw new Error("Invalid GitHub URL.");
+  }
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "github.com" || url.username || url.password || url.search || url.hash) {
+    throw new Error("Invalid GitHub URL. Use https://github.com/owner/repository.");
+  }
+  const parts = url.pathname.replace(/^\/+|\/+$/g, "").split("/");
+  if (parts.length !== 2 || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(parts[0])) {
+    throw new Error("Invalid GitHub URL. Use https://github.com/owner/repository.");
+  }
+  const repositoryName = parts[1].replace(/\.git$/i, "");
+  if (!projectNamePattern.test(repositoryName)) throw new Error("Invalid GitHub repository name.");
+  return { url: `https://github.com/${parts[0]}/${repositoryName}.git`, name: repositoryName };
+}
+
+async function configureIdentity(projectPath: string): Promise<void> {
+  await runGit(projectPath, ["config", "user.name", "Comote"]);
+  await runGit(projectPath, ["config", "user.email", "comote@localhost"]);
+}
+
+async function runGit(cwd: string, args: string[], timeout = 30_000): Promise<void> {
+  try {
+    await execFileAsync("git", ["-C", cwd, ...args], {
+      timeout,
+      maxBuffer: 1024 * 1024,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    });
+  } catch (cause) {
+    const error = cause as Error & { stderr?: string };
+    const detail = error.stderr?.trim().split("\n").slice(-2).join(" ") || error.message;
+    throw new Error(`Git operation failed: ${detail}`);
   }
 }
 

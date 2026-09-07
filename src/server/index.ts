@@ -94,6 +94,21 @@ app.get("/api/projects", async (_request, response) => {
   response.json({ projects: await projects.list() });
 });
 
+app.post("/api/projects", requireCsrf, async (request, response) => {
+  const mode = String(request.body?.mode ?? "");
+  const name = typeof request.body?.name === "string" ? request.body.name : "";
+  if (mode === "create") {
+    response.status(201).json({ project: await projects.create(name) });
+    return;
+  }
+  if (mode === "import") {
+    const repositoryUrl = typeof request.body?.repositoryUrl === "string" ? request.body.repositoryUrl : "";
+    response.status(201).json({ project: await projects.importGithub(repositoryUrl, name) });
+    return;
+  }
+  response.status(400).json({ error: "Mode must be create or import." });
+});
+
 app.get("/api/projects/:projectId/threads", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   response.json({ threads: await codex.listThreads(project.path) });
@@ -202,7 +217,12 @@ if (config.production) {
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected error.";
   console.error(error);
-  response.status(message.includes("not found") ? 404 : 500).json({ error: message });
+  const status = message.includes("not found") ? 404
+    : message.includes("already exists") || message.includes("already in progress") ? 409
+      : message.startsWith("Invalid") ? 400
+        : message.startsWith("Git operation failed") ? 502
+          : 500;
+  response.status(status).json({ error: message });
 });
 
 const server = app.listen(config.port, config.host, () => {
