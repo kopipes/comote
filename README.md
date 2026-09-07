@@ -13,6 +13,7 @@ Comote is a private, single-user PWA for continuing the same VPS-hosted developm
 - Codex App Server is spawned lazily over stdio and never receives a public listener.
 - Projects are restricted to direct Git workspaces under `COMOTE_PROJECTS_ROOT`.
 - The systemd service runs as the unprivileged `coder` user with no Linux capabilities and a read-only system/home view except for explicit Comote paths.
+- Production deployment crosses the privilege boundary through a root-owned Unix socket broker. The broker accepts only validated local project, subdomain, deploy, and rollback requests; each production app builds and runs under its own locked Linux user.
 - Git commits created by Comote include request device, VPS, assistant, and Comote thread trailers.
 
 ## Local development
@@ -62,5 +63,6 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Responsive mobile/desktop layout and installable PWA shell
 - Daily verified local recovery backups and a five-minute self-healing health probe on the VPS
 - One-click preview for Node projects through a private, dedicated Tailscale Serve URL
+- One-click local production deployment for npm projects, with isolated releases, per-app services, wildcard subdomains, HTTPS, and rollback
 
-For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. Private GitHub credentials, passkeys, multi-preview hosting, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
+For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. **Deploy production** always packages the clean canonical branch, never an uncommitted task worktree. Production deployment currently supports npm projects with a lockfile that either build `dist/index.html` or define an npm `start` script. Private GitHub credentials, passkeys, multi-preview hosting, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.

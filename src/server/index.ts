@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
+import { DeploymentManager } from "./deployment.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
 import { PasswordStore } from "./password.js";
@@ -27,12 +28,13 @@ const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
 const previews = new PreviewManager(config.previewPort, config.previewUrl);
+const deployments = new DeploymentManager(config.dataDir, config.deployDomain, config.deploySocket);
 const events = new EventHub();
 const codex = new CodexClient(config, events);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const mergingProjects = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init()]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -296,6 +298,22 @@ app.post("/api/projects/:projectId/preview/stop", requireCsrf, async (request, r
   response.status(204).end();
 });
 
+app.get("/api/projects/:projectId/deployment", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  response.json(deployments.status(project));
+});
+
+app.post("/api/projects/:projectId/deployment/start", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const slug = typeof request.body?.slug === "string" ? request.body.slug : "";
+  response.status(202).json(deployments.start(project, slug));
+});
+
+app.post("/api/projects/:projectId/deployment/rollback", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  response.status(202).json(deployments.rollback(project));
+});
+
 if (config.production) {
   const clientDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../client");
   app.use(express.static(clientDir, {
@@ -321,12 +339,14 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
   const status = message.includes("not found") ? 404
     : message.includes("already exists") || message.includes("already in progress") ? 409
       : message === "Current password is incorrect." ? 401
-        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") ? 400
+        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") ? 400
           : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") ? 409
             : message.startsWith("Preview is not configured") ? 503
               : message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") ? 400
                 : message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") ? 502
                   : message.startsWith("Git operation failed") ? 502
+                    : message.startsWith("Production deployment is not configured") ? 503
+                      : message.startsWith("A deployment is already in progress") ? 409
                     : 500;
   response.status(status).json({ error: message });
 });

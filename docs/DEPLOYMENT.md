@@ -15,7 +15,7 @@ Tailscale Serve terminates private HTTPS and proxies to Comote on `127.0.0.1:417
 
 The optional project preview route uses a second tailnet-only HTTPS listener on port `8443`, proxied by Tailscale Serve to `127.0.0.1:4180`. Only one preview is active at a time. The preview does not pass Comote or Codex secrets into the child process, and its port is not opened on public interfaces.
 
-Nginx remains installed for future public applications, but its service is disabled and public ports 80/443 are closed. Re-enabling Nginx does not replace the private Comote route.
+Production applications use the wildcard `*.apps.devop.my.id`, whose DNS-only A record points to this VPS. Nginx binds only to the VPS private/NAT interface address `10.0.3.25` on public ports 80/443, so Tailscale continues listening on its own address on port 443. Application processes bind to loopback ports 5200–5299 and are not opened by UFW.
 
 ## Files and ownership
 
@@ -27,6 +27,10 @@ Nginx remains installed for future public applications, but its service is disab
 - Codex login and sessions: `/home/coder/.codex`
 - Root-only environment: `/etc/comote/comote.env`
 - Service definition: `/etc/systemd/system/comote.service`
+- Deployment broker socket: `/run/comote-deploy.sock`
+- Production releases: `/srv/comote-apps/<slug>/releases`
+- Production metadata: `/var/lib/comote-deploy/apps.json`
+- Production app environment: `/etc/comote/apps/<slug>.env`
 - Root-only local backups: `/var/backups/comote` (14-day retention)
 
 The service runs as the locked, non-sudo `coder` account. Its systemd sandbox grants write access only to the Comote state, Codex state, and project workspace paths.
@@ -52,6 +56,21 @@ ssh cloudeka48 'sudo systemctl restart comote.service'
 A health timer probes Comote every five minutes and performs one automatic restart if the local HTTP health endpoint fails. A daily backup runs at approximately 03:30 Asia/Jakarta, briefly stops Comote for a consistent snapshot, verifies the archive, restarts the service, and retains 14 days. These archives are root-only and remain on the same VPS, so an off-VPS backup is still recommended later.
 
 Rollback by repointing the release symlink to a known-good release, then restart. Confirm the exact release path before running the command.
+
+## Production deployment
+
+The Changes pane can deploy a clean canonical branch to `<slug>.apps.devop.my.id`. Source is exported with `git archive`, dependencies are installed from `package-lock.json`, and project build scripts execute as a locked per-app Linux user rather than root or `coder`. Static `dist/` builds are served directly by Nginx; projects with an npm `start` script run through `comote-app@<slug>.service`. Let’s Encrypt certificates are requested through an HTTP webroot challenge and renewed by the system timer.
+
+Comote itself is explicitly excluded from public deployment. A project keeps the same slug after its first successful deployment. Up to four recent immutable releases are retained; the UI exposes rollback when a previous release exists. If a new Node release fails to listen on its allocated port, the broker restores the previous release automatically.
+
+Useful checks:
+
+```sh
+ssh cloudeka48 'sudo systemctl status comote-deploy.socket nginx --no-pager'
+ssh cloudeka48 'sudo systemctl status comote-app@SLUG.service --no-pager'
+ssh cloudeka48 'sudo journalctl -u "comote-deploy@*" -n 100 --no-pager'
+ssh cloudeka48 'sudo nginx -t'
+```
 
 ## Development continuity
 

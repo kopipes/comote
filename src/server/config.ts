@@ -12,6 +12,8 @@ export interface ComoteConfig {
   codexBin: string;
   previewPort: number;
   previewUrl: string;
+  deployDomain: string;
+  deploySocket: string;
   production: boolean;
 }
 
@@ -41,6 +43,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ComoteConfig {
     codexBin: env.COMOTE_CODEX_BIN ?? "codex",
     previewPort: positiveNumber(env.COMOTE_PREVIEW_PORT, 4180),
     previewUrl: env.COMOTE_PREVIEW_URL ?? "",
+    deployDomain: env.COMOTE_DEPLOY_DOMAIN?.trim().toLowerCase() ?? "",
+    deploySocket: env.COMOTE_DEPLOY_SOCKET ?? "/run/comote-deploy.sock",
     production,
   };
 }

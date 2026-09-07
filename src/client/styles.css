@@ -403,6 +403,19 @@ button:not(:disabled):active { transform: translateY(1px); }
 .preview-actions a { display: grid; place-items: center; text-decoration: none; font-size: 11px; }
 .preview-box details summary { cursor: pointer; color: var(--muted); font-size: 10px; }
 .preview-box pre { max-height: 180px; margin-top: 8px; font-size: 9px; }
+.deployment-box { display: grid; gap: 10px; margin: 18px 12px 28px; padding: 16px 12px; border: 1px solid #275b48; border-radius: 11px; background: linear-gradient(145deg, #0b1b16, #09130f); }
+.deployment-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.deployment-heading > div { display: grid; gap: 4px; }
+.deployment-heading .eyebrow { margin: 0; }
+.deployment-heading strong { color: var(--muted); font-size: 10px; }
+.production-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 12px var(--mint); }
+.deployment-box label { font-size: 10px; }
+.deployment-box input { margin-top: 5px; font-size: 11px; }
+.deployment-box p { margin: 0; color: var(--subtle); font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+.deployment-box code { overflow: hidden; color: var(--subtle); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.deployment-box details summary { cursor: pointer; color: var(--muted); font-size: 10px; }
+.deployment-box pre { max-height: 220px; margin-top: 8px; font-size: 9px; }
+.production-link { display: grid; place-items: center; text-decoration: none; font-size: 11px; }
 
 .mobile-nav { display: none; }
 

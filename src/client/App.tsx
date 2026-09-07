@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
+import { api, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
 
 type AuthState = Session | null | undefined;
 
@@ -630,6 +630,8 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [deployment, setDeployment] = useState<DeploymentState | null>(null);
+  const [deploySlug, setDeploySlug] = useState("");
   const changedFiles = useMemo(() => git?.status.split("\n").filter(Boolean) ?? [], [git?.status]);
 
   const refreshPreview = useCallback(async () => {
@@ -648,6 +650,32 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
   useEffect(() => {
     void refreshPreview();
   }, [refreshPreview]);
+
+  const refreshDeployment = useCallback(async () => {
+    if (!project) {
+      setDeployment(null);
+      return;
+    }
+    try {
+      const next = await api.get<DeploymentState>(`/api/projects/${project.id}/deployment`);
+      setDeployment(next);
+      setDeploySlug(next.slug || slugify(project.name));
+    } catch (cause) {
+      onError((cause as Error).message);
+    }
+  }, [project, onError]);
+
+  useEffect(() => {
+    setDeployment(null);
+    setDeploySlug(project ? slugify(project.name) : "");
+    void refreshDeployment();
+  }, [project?.id, refreshDeployment]);
+
+  useEffect(() => {
+    if (deployment?.phase !== "deploying" && deployment?.phase !== "rolling_back") return;
+    const timer = window.setInterval(() => void refreshDeployment(), 2_000);
+    return () => window.clearInterval(timer);
+  }, [deployment?.phase, refreshDeployment]);
 
   async function commit() {
     if (!project || !message.trim()) return;
@@ -729,6 +757,32 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
     }
   }
 
+  async function deployProduction() {
+    if (!project || !deploySlug.trim()) return;
+    const domain = `${deploySlug.trim().toLowerCase()}.${deployment?.domainSuffix || "apps.devop.my.id"}`;
+    if (!window.confirm(`Deploy the clean canonical branch to https://${domain}?`)) return;
+    setBusy(true);
+    try {
+      setDeployment(await api.post<DeploymentState>(`/api/projects/${project.id}/deployment/start`, { slug: deploySlug }));
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rollbackProduction() {
+    if (!project || !deployment?.previousRelease || !window.confirm(`Roll back ${deployment.domain} to its previous release?`)) return;
+    setBusy(true);
+    try {
+      setDeployment(await api.post<DeploymentState>(`/api/projects/${project.id}/deployment/rollback`));
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="changes-content">
       <div className="pane-heading"><span>Changes</span><button className="text-button" onClick={() => onRefresh()} disabled={!project}>Refresh</button></div>
@@ -759,10 +813,42 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
             {preview?.selected && preview.logs && <details><summary>Preview logs</summary><pre>{preview.logs}</pre></details>}
             {!thread && <p>Select a task before starting its preview.</p>}
           </div>
+          <div className="deployment-box">
+            <div className="deployment-heading">
+              <div><span className="eyebrow">Production</span><strong>{deploymentLabel(deployment)}</strong></div>
+              {deployment?.phase === "deployed" && <span className="production-dot" />}
+            </div>
+            {deployment?.enabled ? (
+              <>
+                <label>Subdomain<input value={deploySlug} onChange={(event) => setDeploySlug(slugify(event.target.value))} maxLength={24} placeholder="my-app" disabled={Boolean(deployment.release)} /></label>
+                <p>{deploySlug || "name"}.{deployment.domainSuffix} · deploys the clean canonical branch</p>
+                <button className="primary full" onClick={deployProduction} disabled={busy || !deploySlug || deployment.phase === "deploying" || deployment.phase === "rolling_back"}>
+                  {deployment.phase === "deploying" ? "Deploying…" : deployment.phase === "rolling_back" ? "Rolling back…" : "Deploy production"}
+                </button>
+                {deployment.release && <a className="secondary full production-link" href={deployment.url} target="_blank" rel="noreferrer">Open production</a>}
+                {deployment.previousRelease && <button className="text-button" onClick={rollbackProduction} disabled={busy || deployment.phase !== "deployed"}>Rollback previous release</button>}
+                {deployment.release && <code>{deployment.kind} · {deployment.release}</code>}
+                {deployment.logs && <details open={deployment.phase === "failed"}><summary>Deployment logs</summary><pre>{deployment.logs}</pre></details>}
+              </>
+            ) : <p>{deployment?.disabledReason || "Production deployment is not configured on this server."}</p>}
+          </div>
         </>
       )}
     </div>
   );
+}
+
+function deploymentLabel(deployment: DeploymentState | null): string {
+  if (!deployment) return "Loading…";
+  if (deployment.phase === "deploying") return "Deploying canonical branch";
+  if (deployment.phase === "rolling_back") return "Rolling back";
+  if (deployment.phase === "deployed") return "Live";
+  if (deployment.phase === "failed") return "Last deployment failed";
+  return "Not deployed";
+}
+
+function slugify(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24).replace(/-+$/g, "");
 }
 
 function EmptySmall({ text }: { text: string }) {

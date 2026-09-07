@@ -53,6 +53,21 @@ export interface PreviewState {
   startedAt: string;
 }
 
+export interface DeploymentState {
+  enabled: boolean;
+  domainSuffix: string;
+  disabledReason: string;
+  phase: "idle" | "deploying" | "deployed" | "rolling_back" | "failed";
+  slug: string;
+  domain: string;
+  url: string;
+  release: string;
+  previousRelease: string;
+  kind: "" | "static" | "node";
+  logs: string;
+  updatedAt: string;
+}
+
 export interface LiveEvent {
   id: string;
   threadId: string;

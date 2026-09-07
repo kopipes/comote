@@ -1,0 +1,13 @@
+[Unit]
+Description=Comote privileged deployment broker socket
+
+[Socket]
+ListenStream=/run/comote-deploy.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=coder
+RemoveOnStop=true
+Accept=yes
+
+[Install]
+WantedBy=sockets.target

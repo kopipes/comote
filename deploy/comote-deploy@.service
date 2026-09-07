@@ -1,0 +1,29 @@
+[Unit]
+Description=Comote privileged deployment broker request
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/comote/deploy.env
+ExecStart=/usr/bin/node /opt/comote/current/build/server/deploy-helper.js
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=15min
+
+UMask=0027
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=read-only
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+LockPersonality=true

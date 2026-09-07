@@ -1,0 +1,39 @@
+[Unit]
+Description=Comote production application %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=comote-%i
+Group=comote-%i
+WorkingDirectory=/srv/comote-apps/%i/current
+EnvironmentFile=/etc/comote/apps/%i.env
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+
+NoNewPrivileges=true
+UMask=0027
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/srv/comote-apps/%i
+
+[Install]
+WantedBy=multi-user.target
