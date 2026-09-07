@@ -43,6 +43,8 @@ NODE_ENV=production node build/server/index.js
 
 Production configuration is shown in `.env.example`. The systemd unit at `deploy/comote.service` expects the release at `/opt/comote/current`, configuration at `/etc/comote/comote.env`, and writable state under `/home/coder`.
 
+The currently deployed VPS topology and recovery commands are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ## Current MVP surface
 
 - Private login with remembered device label
