@@ -43,6 +43,16 @@ export interface GitState {
   baseBranch?: string;
 }
 
+export interface PreviewState {
+  running: boolean;
+  selected: boolean;
+  ready: boolean;
+  url: string;
+  command: string;
+  logs: string;
+  startedAt: string;
+}
+
 export interface LiveEvent {
   id: string;
   threadId: string;

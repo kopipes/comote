@@ -7,6 +7,7 @@ import { CodexClient } from "./codex-client.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
 import { PasswordStore } from "./password.js";
+import { PreviewManager } from "./preview.js";
 import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
 import { WorktreeManager, type ThreadWorkspace } from "./worktrees.js";
@@ -25,6 +26,7 @@ const sessions = new SessionStore(config.dataDir, config.sessionDays);
 const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
+const previews = new PreviewManager(config.previewPort, config.previewUrl);
 const events = new EventHub();
 const codex = new CodexClient(config, events);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
@@ -272,6 +274,28 @@ app.post("/api/projects/:projectId/git/merge", requireCsrf, async (request, resp
   }
 });
 
+app.get("/api/projects/:projectId/preview", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = queryString(request, "threadId");
+  if (threadId) await resolveThread(project, threadId);
+  response.json(previews.status(project, threadId));
+});
+
+app.post("/api/projects/:projectId/preview/start", requireCsrf, async (request, response) => {
+  if (!config.previewUrl) throw new Error("Preview is not configured on this server.");
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  if (!threadId) throw new Error("Invalid thread id.");
+  const { workspace } = await resolveThread(project, threadId);
+  response.json(await previews.start(project, threadId, workspace));
+});
+
+app.post("/api/projects/:projectId/preview/stop", requireCsrf, async (request, response) => {
+  await projects.get(param(request, "projectId"));
+  await previews.stop();
+  response.status(204).end();
+});
+
 if (config.production) {
   const clientDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../client");
   app.use(express.static(clientDir, {
@@ -299,8 +323,11 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
       : message === "Current password is incorrect." ? 401
         : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") ? 400
           : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") ? 409
-        : message.startsWith("Git operation failed") ? 502
-          : 500;
+            : message.startsWith("Preview is not configured") ? 503
+              : message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") ? 400
+                : message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") ? 502
+                  : message.startsWith("Git operation failed") ? 502
+                    : 500;
   response.status(status).json({ error: message });
 });
 
@@ -390,6 +417,7 @@ function writeSse(response: Response, event: unknown): void {
 
 function shutdown(): void {
   codex.stop();
+  void previews.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5_000).unref();
 }

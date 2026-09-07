@@ -13,6 +13,8 @@ This document records the active single-user deployment as of 2026-09-07. It int
 
 Tailscale Serve terminates private HTTPS and proxies to Comote on `127.0.0.1:4173`. Comote and Codex App Server have no public listener. UFW allows public SSH and allows TCP 443 only on `tailscale0`.
 
+The optional project preview route uses a second tailnet-only HTTPS listener on port `8443`, proxied by Tailscale Serve to `127.0.0.1:4180`. Only one preview is active at a time. The preview does not pass Comote or Codex secrets into the child process, and its port is not opened on public interfaces.
+
 Nginx remains installed for future public applications, but its service is disabled and public ports 80/443 are closed. Re-enabling Nginx does not replace the private Comote route.
 
 ## Files and ownership

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, type GitState, type LiveEvent, type Project, type Session, type Thread, type ThreadItem } from "./api";
+import { api, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
 
 type AuthState = Session | null | undefined;
 
@@ -629,7 +629,25 @@ function Composer({ disabled, onSend }: { disabled: boolean; onSend: (text: stri
 function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: Project | null; thread: Thread | null; git: GitState | null; onRefresh: () => Promise<void>; onError: (message: string) => void }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const changedFiles = useMemo(() => git?.status.split("\n").filter(Boolean) ?? [], [git?.status]);
+
+  const refreshPreview = useCallback(async () => {
+    if (!project) {
+      setPreview(null);
+      return;
+    }
+    const query = thread ? `?threadId=${encodeURIComponent(thread.id)}` : "";
+    try {
+      setPreview(await api.get<PreviewState>(`/api/projects/${project.id}/preview${query}`));
+    } catch (cause) {
+      onError((cause as Error).message);
+    }
+  }, [project, thread, onError]);
+
+  useEffect(() => {
+    void refreshPreview();
+  }, [refreshPreview]);
 
   async function commit() {
     if (!project || !message.trim()) return;
@@ -684,6 +702,33 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
     }
   }
 
+  async function startPreview() {
+    if (!project || !thread) return;
+    if (preview?.running && !window.confirm("Stop the current preview and start this task instead?")) return;
+    setBusy(true);
+    try {
+      setPreview(await api.post<PreviewState>(`/api/projects/${project.id}/preview/start`, { threadId: thread.id }));
+    } catch (cause) {
+      onError((cause as Error).message);
+      await refreshPreview();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stopPreview() {
+    if (!project) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/projects/${project.id}/preview/stop`);
+      await refreshPreview();
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="changes-content">
       <div className="pane-heading"><span>Changes</span><button className="text-button" onClick={() => onRefresh()} disabled={!project}>Refresh</button></div>
@@ -701,6 +746,18 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
             {git?.isolated && <button className="secondary full" onClick={merge} disabled={busy || Boolean(changedFiles.length)}>Merge into {git.baseBranch ?? "main"}</button>}
             {git?.isolated && <button className="secondary full" onClick={pushCanonical} disabled={busy}>Push {git.baseBranch ?? "main"}</button>}
             <button className="secondary full" onClick={push} disabled={busy}>{git?.isolated ? "Push task branch" : "Push branch"}</button>
+          </div>
+          <div className="preview-box">
+            <div><span className="eyebrow">Private preview</span><strong>{preview?.selected ? "This task is live" : preview?.running ? "Another task is live" : "Not running"}</strong></div>
+            {preview?.selected ? (
+              <div className="preview-actions">
+                <a className="primary" href={preview.url} target="_blank" rel="noreferrer">Open preview</a>
+                <button className="secondary" onClick={stopPreview} disabled={busy}>Stop</button>
+              </div>
+            ) : <button className="secondary full" onClick={startPreview} disabled={busy || !thread}>{preview?.running ? "Replace with this task" : "Start preview"}</button>}
+            {preview?.selected && preview.command && <code>{preview.command}</code>}
+            {preview?.selected && preview.logs && <details><summary>Preview logs</summary><pre>{preview.logs}</pre></details>}
+            {!thread && <p>Select a task before starting its preview.</p>}
           </div>
         </>
       )}

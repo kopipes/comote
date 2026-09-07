@@ -61,5 +61,6 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Explicit merge from a clean task branch into the canonical branch, also with provenance trailers
 - Responsive mobile/desktop layout and installable PWA shell
 - Daily verified local recovery backups and a five-minute self-healing health probe on the VPS
+- One-click preview for Node projects through a private, dedicated Tailscale Serve URL
 
-For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. Private GitHub credentials, passkeys, managed preview URLs, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
+For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. Private GitHub credentials, passkeys, multi-preview hosting, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.

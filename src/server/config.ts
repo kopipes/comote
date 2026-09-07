@@ -10,6 +10,8 @@ export interface ComoteConfig {
   sessionDays: number;
   idleMinutes: number;
   codexBin: string;
+  previewPort: number;
+  previewUrl: string;
   production: boolean;
 }
 
@@ -37,6 +39,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ComoteConfig {
     sessionDays: positiveNumber(env.COMOTE_SESSION_DAYS, 30),
     idleMinutes: positiveNumber(env.COMOTE_IDLE_MINUTES, 30),
     codexBin: env.COMOTE_CODEX_BIN ?? "codex",
+    previewPort: positiveNumber(env.COMOTE_PREVIEW_PORT, 4180),
+    previewUrl: env.COMOTE_PREVIEW_URL ?? "",
     production,
   };
 }
