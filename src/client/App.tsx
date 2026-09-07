@@ -122,6 +122,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
   const streamRef = useRef<EventSource | null>(null);
+  const gitRequestRef = useRef(0);
 
   useEffect(() => {
     api.get<{ projects: Project[] }>("/api/projects")
@@ -132,14 +133,20 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       .catch((cause) => setError((cause as Error).message));
   }, []);
 
-  const refreshGit = useCallback(async (selected = project) => {
-    if (!selected) return;
-    try {
-      setGit(await api.get<GitState>(`/api/projects/${selected.id}/git`));
-    } catch (cause) {
-      setError((cause as Error).message);
+  const refreshGit = useCallback(async () => {
+    const requestId = ++gitRequestRef.current;
+    if (!project) {
+      setGit(null);
+      return;
     }
-  }, [project]);
+    try {
+      const query = thread ? `?threadId=${encodeURIComponent(thread.id)}` : "";
+      const next = await api.get<GitState>(`/api/projects/${project.id}/git${query}`);
+      if (requestId === gitRequestRef.current) setGit(next);
+    } catch (cause) {
+      if (requestId === gitRequestRef.current) setError((cause as Error).message);
+    }
+  }, [project, thread]);
 
   useEffect(() => {
     if (!project) return;
@@ -151,8 +158,11 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
     api.get<{ threads: Thread[] }>(`/api/projects/${project.id}/threads`)
       .then(({ threads }) => setThreads(threads))
       .catch((cause) => setError((cause as Error).message));
-    void refreshGit(project);
-  }, [project, refreshGit]);
+  }, [project?.id]);
+
+  useEffect(() => {
+    void refreshGit();
+  }, [refreshGit]);
 
   useEffect(() => {
     streamRef.current?.close();
@@ -327,7 +337,10 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
           <>
             <div className="conversation-header">
               <div><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
-              <span className={`run-state ${running ? "running" : ""}`}>{running ? "Codex is working" : "Ready"}</span>
+              <div className="run-states">
+                {git?.isolated && <span className="task-state">Isolated task</span>}
+                <span className={`run-state ${running ? "running" : ""}`}>{running ? "Codex is working" : "Ready"}</span>
+              </div>
             </div>
             <div className="message-scroll">
               {messages.length === 0 && <StarterCards onChoose={sendMessage} />}
@@ -633,10 +646,36 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
   }
 
   async function push() {
-    if (!project || !window.confirm("Push the current branch to its configured remote?")) return;
+    if (!project || !window.confirm(`Push ${git?.branch ?? "the current branch"} to its configured remote?`)) return;
     setBusy(true);
     try {
-      await api.post(`/api/projects/${project.id}/git/push`);
+      await api.post(`/api/projects/${project.id}/git/push`, { threadId: thread?.id });
+      await onRefresh();
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pushCanonical() {
+    if (!project || !git?.isolated || !window.confirm(`Push ${git.baseBranch ?? "the canonical branch"} to its configured remote?`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/projects/${project.id}/git/push`, {});
+      await onRefresh();
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function merge() {
+    if (!project || !thread || !git?.isolated || !window.confirm(`Merge ${git.branch} into ${git.baseBranch ?? "the canonical branch"}?`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/api/projects/${project.id}/git/merge`, { threadId: thread.id });
       await onRefresh();
     } catch (cause) {
       onError((cause as Error).message);
@@ -659,7 +698,9 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
           <div className="commit-box">
             <label>Commit message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe this change" /></label>
             <button className="primary full" onClick={commit} disabled={busy || !changedFiles.length || !message.trim()}>{busy ? "Working…" : "Commit with device note"}</button>
-            <button className="secondary full" onClick={push} disabled={busy}>Push branch</button>
+            {git?.isolated && <button className="secondary full" onClick={merge} disabled={busy || Boolean(changedFiles.length)}>Merge into {git.baseBranch ?? "main"}</button>}
+            {git?.isolated && <button className="secondary full" onClick={pushCanonical} disabled={busy}>Push {git.baseBranch ?? "main"}</button>}
+            <button className="secondary full" onClick={push} disabled={busy}>{git?.isolated ? "Push task branch" : "Push branch"}</button>
           </div>
         </>
       )}

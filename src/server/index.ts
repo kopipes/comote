@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
 import { EventHub } from "./event-hub.js";
-import { gitCommit, gitPush, gitStatus } from "./git.js";
+import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
 import { PasswordStore } from "./password.js";
 import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
+import { WorktreeManager, type ThreadWorkspace } from "./worktrees.js";
 
 declare global {
   namespace Express {
@@ -23,11 +24,13 @@ const config = loadConfig();
 const sessions = new SessionStore(config.dataDir, config.sessionDays);
 const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const projects = new ProjectRegistry(config.projectsRoot);
+const worktrees = new WorktreeManager(config.dataDir);
 const events = new EventHub();
 const codex = new CodexClient(config, events);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
+const mergingProjects = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init()]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -129,46 +132,63 @@ app.post("/api/projects/:projectId/settings/remote", requireCsrf, async (request
 
 app.get("/api/projects/:projectId/threads", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  response.json({ threads: await codex.listThreads(project.path) });
+  const threads = (await codex.listThreads(worktrees.pathsForProject(project)))
+    .filter((thread) => worktrees.belongsToProject(project, String(thread.id ?? ""), thread.cwd));
+  response.json({ threads });
 });
 
 app.post("/api/projects/:projectId/threads", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  response.status(201).json({ thread: await codex.startThread(project.path) });
+  const prepared = await worktrees.prepare(project);
+  try {
+    const thread = await codex.startThread(prepared.path);
+    const threadId = typeof thread.id === "string" ? thread.id : "";
+    if (!threadId) throw new Error("Invalid thread returned by Codex.");
+    await worktrees.attach(prepared, threadId);
+    response.status(201).json({ thread });
+  } catch (error) {
+    await worktrees.abort(project, prepared);
+    throw error;
+  }
 });
 
 app.get("/api/projects/:projectId/threads/:threadId", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  const thread = await codex.readThread(param(request, "threadId"));
-  assertThreadProject(thread, project);
+  const { thread } = await resolveThread(project, param(request, "threadId"), true);
   response.json({ thread });
 });
 
 app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  const { workspace } = await resolveThread(project, threadId);
   const text = typeof request.body?.text === "string" ? request.body.text.trim() : "";
   if (!text || text.length > 20_000) {
     response.status(400).json({ error: "Message must be 1–20,000 characters." });
     return;
   }
   const turn = await codex.startTurn(
-    param(request, "threadId"),
-    project.path,
+    threadId,
+    workspace.path,
     text,
     request.comoteSession!.deviceName,
+    workspace.writableRoots,
   );
   response.status(202).json({ turn });
 });
 
 app.post("/api/projects/:projectId/threads/:threadId/interrupt", requireCsrf, async (request, response) => {
-  await projects.get(param(request, "projectId"));
-  await codex.interrupt(param(request, "threadId"));
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  await codex.interrupt(threadId);
   response.status(204).end();
 });
 
 app.get("/api/projects/:projectId/threads/:threadId/events", async (request, response) => {
-  await projects.get(param(request, "projectId"));
+  const project = await projects.get(param(request, "projectId"));
   const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
   response.setHeader("Content-Type", "text/event-stream");
   response.setHeader("Cache-Control", "no-cache, no-transform");
   response.setHeader("Connection", "keep-alive");
@@ -184,7 +204,9 @@ app.get("/api/projects/:projectId/threads/:threadId/events", async (request, res
 });
 
 app.post("/api/projects/:projectId/threads/:threadId/approvals/:requestId", requireCsrf, async (request, response) => {
-  await projects.get(param(request, "projectId"));
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
   const allowed = new Set(["accept", "decline", "cancel"]);
   const decision = String(request.body?.decision);
   if (!allowed.has(decision)) {
@@ -193,7 +215,7 @@ app.post("/api/projects/:projectId/threads/:threadId/approvals/:requestId", requ
   }
   await codex.resolveApproval(
     param(request, "requestId"),
-    param(request, "threadId"),
+    threadId,
     decision as "accept" | "decline" | "cancel",
   );
   response.status(204).end();
@@ -201,31 +223,68 @@ app.post("/api/projects/:projectId/threads/:threadId/approvals/:requestId", requ
 
 app.get("/api/projects/:projectId/git", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  response.json(await gitStatus(project.path));
+  const threadId = queryString(request, "threadId");
+  const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
+  response.json({ ...await gitStatus(workspace.path), isolated: workspace.isolated, baseBranch: workspace.baseBranch });
 });
 
 app.post("/api/projects/:projectId/git/commit", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
   const sha = await gitCommit(
-    project.path,
+    workspace.path,
     String(request.body?.message ?? ""),
     request.comoteSession!.deviceName,
-    String(request.body?.threadId ?? "manual"),
+    threadId || "manual",
   );
   response.status(201).json({ sha });
 });
 
 app.post("/api/projects/:projectId/git/push", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  response.json({ output: await gitPush(project.path) });
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
+  response.json({ output: await gitPush(workspace.path) });
+});
+
+app.post("/api/projects/:projectId/git/merge", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  if (!threadId) throw new Error("Invalid thread id.");
+  const { workspace } = await resolveThread(project, threadId);
+  const record = worktrees.recordForThread(project, threadId);
+  if (!record || !workspace.isolated) throw new Error("Only an isolated task can be merged.");
+  if (mergingProjects.has(project.id)) throw new Error("A merge is already in progress for this project.");
+  mergingProjects.add(project.id);
+  try {
+    const sha = await gitMergeTask(
+      project.path,
+      workspace.path,
+      record.baseBranch,
+      record.branch,
+      request.comoteSession!.deviceName,
+      threadId,
+    );
+    response.json({ sha, branch: record.baseBranch });
+  } finally {
+    mergingProjects.delete(project.id);
+  }
 });
 
 if (config.production) {
   const clientDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../client");
-  app.use(express.static(clientDir, { fallthrough: true, maxAge: "1h" }));
+  app.use(express.static(clientDir, {
+    fallthrough: true,
+    maxAge: "1y",
+    immutable: true,
+    setHeaders(response, filePath) {
+      if (!filePath.includes(`${path.sep}assets${path.sep}`)) response.setHeader("Cache-Control", "no-cache");
+    },
+  }));
   app.use((request, response, next) => {
     if (request.method === "GET" && request.accepts("html")) {
-      response.sendFile(path.join(clientDir, "index.html"));
+      response.sendFile(path.join(clientDir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
       return;
     }
     next();
@@ -238,7 +297,8 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
   const status = message.includes("not found") ? 404
     : message.includes("already exists") || message.includes("already in progress") ? 409
       : message === "Current password is incorrect." ? 401
-        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") ? 400
+        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") ? 400
+          : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") ? 409
         : message.startsWith("Git operation failed") ? 502
           : 500;
   response.status(status).json({ error: message });
@@ -291,6 +351,11 @@ function param(request: Request, key: string): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
+function queryString(request: Request, key: string): string {
+  const value = request.query[key];
+  return typeof value === "string" ? value : "";
+}
+
 function setSessionCookie(response: Response, token: string): void {
   response.cookie("comote_session", token, {
     httpOnly: true,
@@ -310,10 +375,13 @@ function clearSessionCookie(response: Response): void {
   });
 }
 
-function assertThreadProject(thread: Record<string, unknown>, project: Project): void {
-  if (typeof thread.cwd === "string" && path.resolve(thread.cwd) !== project.path) {
-    throw new Error("Thread does not belong to this project.");
-  }
+async function resolveThread(project: Project, threadId: string, includeTurns = false): Promise<{ thread: Record<string, unknown>; workspace: ThreadWorkspace }> {
+  const thread = await codex.readThread(threadId, includeTurns).catch(async (error: Error) => {
+    if (includeTurns && error.message.includes("not materialized yet")) return codex.readThread(threadId, false);
+    throw error;
+  });
+  if (!worktrees.belongsToProject(project, threadId, thread.cwd)) throw new Error("Thread does not belong to this project.");
+  return { thread, workspace: await worktrees.forThread(project, threadId) };
 }
 
 function writeSse(response: Response, event: unknown): void {

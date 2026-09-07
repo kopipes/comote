@@ -21,6 +21,7 @@ Nginx remains installed for future public applications, but its service is disab
 - Immutable releases: `/opt/comote/releases/<git-sha>`
 - Canonical development workspace: `/home/coder/projects/comote`
 - Comote state: `/home/coder/.local/share/comote`
+- Isolated task worktrees: `/home/coder/.local/share/comote/worktrees`
 - Codex login and sessions: `/home/coder/.codex`
 - Root-only environment: `/etc/comote/comote.env`
 - Service definition: `/etc/systemd/system/comote.service`
@@ -48,6 +49,6 @@ Rollback by repointing the release symlink to a known-good release, then restart
 
 ## Development continuity
 
-All browser clients operate on the same VPS workspace. Codex threads persist under the `coder` account and can be resumed from another device. Commits made by the Comote UI include `Requested-From`, `Developed-On`, `Assisted-By`, and `Comote-Session` trailers so the origin remains visible in Git history.
+All browser clients operate on the same VPS development environment. New Codex tasks use persistent isolated Git worktrees, so parallel tasks do not overwrite each other's uncommitted files; existing threads continue in their original canonical workspace. A clean, committed task branch can be merged explicitly into the canonical branch. Commits and task merges made by the Comote UI include `Requested-From`, `Developed-On`, `Assisted-By`, and `Comote-Session` trailers so the origin remains visible in Git history.
 
 The repository uses `https://github.com/kopipes/comote.git` as its off-VPS Git remote. The VPS workspace uses a dedicated, repository-scoped SSH deploy key; that key must be registered on GitHub with write access before the explicit Push action can authenticate.

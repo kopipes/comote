@@ -53,10 +53,12 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Change the Comote password and configure the selected project's public GitHub remote from Settings
 - Project and Codex thread discovery
 - New/resumed natural-language sessions
+- New sessions run in an isolated `comote/task-*` Git worktree; existing sessions remain compatible with the canonical workspace
 - Live assistant, command, file-change, status, and approval events
 - Approval allow/decline actions
 - Git status and diff viewer
 - Explicit commit with provenance trailers and explicit push
+- Explicit merge from a clean task branch into the canonical branch, also with provenance trailers
 - Responsive mobile/desktop layout and installable PWA shell
 
-Private GitHub credentials, passkeys, managed preview URLs, worktree-per-task isolation, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
+For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. Private GitHub credentials, passkeys, managed preview URLs, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.

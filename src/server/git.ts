@@ -46,3 +46,36 @@ export async function gitPush(cwd: string, extraEnvironment: NodeJS.ProcessEnv =
     .catch(() => false);
   return git(cwd, hasUpstream ? ["push"] : ["push", "-u", "origin", "HEAD"], extraEnvironment);
 }
+
+export async function gitMergeTask(
+  projectPath: string,
+  worktreePath: string,
+  expectedBaseBranch: string,
+  expectedTaskBranch: string,
+  deviceName: string,
+  sessionId: string,
+): Promise<string> {
+  const [projectStatus, taskStatus, baseBranch, taskBranch] = await Promise.all([
+    git(projectPath, ["status", "--short"]),
+    git(worktreePath, ["status", "--short"]),
+    git(projectPath, ["branch", "--show-current"]),
+    git(worktreePath, ["branch", "--show-current"]),
+  ]);
+  if (projectStatus) throw new Error("Canonical workspace has uncommitted changes. Commit or discard them before merging a task.");
+  if (taskStatus) throw new Error("Task worktree has uncommitted changes. Commit them before merging.");
+  if (baseBranch !== expectedBaseBranch || taskBranch !== expectedTaskBranch) {
+    throw new Error("Task or canonical branch changed unexpectedly. Refresh before merging.");
+  }
+
+  await git(projectPath, ["merge-tree", "--write-tree", baseBranch, taskBranch]).catch(() => {
+    throw new Error("Task branch conflicts with the canonical branch. Ask Codex to resolve the conflicts in the task first.");
+  });
+  const trailers = [
+    `Requested-From: ${deviceName}`,
+    "Developed-On: cloudeka48",
+    "Assisted-By: Codex",
+    `Comote-Session: ${sessionId}`,
+  ].join("\n");
+  await git(projectPath, ["merge", "--no-ff", taskBranch, "-m", `merge: ${taskBranch}`, "-m", trailers]);
+  return git(projectPath, ["rev-parse", "--short", "HEAD"]);
+}

@@ -39,6 +39,8 @@ export interface GitState {
   branch: string;
   status: string;
   diff: string;
+  isolated?: boolean;
+  baseBranch?: string;
 }
 
 export interface LiveEvent {

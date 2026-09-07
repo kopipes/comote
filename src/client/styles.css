@@ -277,6 +277,8 @@ button:not(:disabled):active { transform: translateY(1px); }
 .conversation-header .eyebrow { margin-bottom: 5px; }
 .run-state { flex: 0 0 auto; border: 1px solid var(--line-bright); border-radius: 999px; padding: 7px 10px; color: var(--muted); font-size: 10px; }
 .run-state.running { border-color: #31584b; background: var(--mint-dark); color: var(--mint); }
+.run-states { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.task-state { border: 1px solid #315648; border-radius: 999px; color: var(--mint); padding: 5px 8px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 
 .message-scroll {
   flex: 1;

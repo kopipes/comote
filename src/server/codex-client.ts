@@ -32,13 +32,13 @@ export class CodexClient {
     readonly events: EventHub,
   ) {}
 
-  async listThreads(cwd: string): Promise<JsonObject[]> {
+  async listThreads(cwd?: string | string[]): Promise<JsonObject[]> {
     const result = await this.request<{ data?: JsonObject[] }>("thread/list", {
       limit: 100,
       sortKey: "updated_at",
       sortDirection: "desc",
       sourceKinds: ["appServer", "cli", "vscode"],
-      cwd,
+      ...(cwd ? { cwd } : {}),
     });
     return result.data ?? [];
   }
@@ -55,10 +55,10 @@ export class CodexClient {
     return result.thread;
   }
 
-  async readThread(threadId: string): Promise<JsonObject> {
+  async readThread(threadId: string, includeTurns = true): Promise<JsonObject> {
     const result = await this.request<{ thread: JsonObject }>("thread/read", {
       threadId,
-      includeTurns: true,
+      includeTurns,
     });
     return result.thread;
   }

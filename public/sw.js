@@ -1,4 +1,4 @@
-const CACHE = "comote-shell-v1";
+const CACHE = "comote-shell-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -15,5 +15,17 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || new URL(event.request.url).pathname.startsWith("/api/")) return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+  const networkRequest = event.request.mode === "navigate"
+    ? new Request(event.request, { cache: "reload" })
+    : event.request;
+  event.respondWith(
+    fetch(networkRequest)
+      .then((response) => {
+        if (response.ok && new URL(event.request.url).origin === self.location.origin) {
+          event.waitUntil(caches.open(CACHE).then((cache) => cache.put(event.request, response.clone())));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+  );
 });
