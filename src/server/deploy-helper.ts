@@ -145,6 +145,7 @@ async function deploy(config: HelperConfig, request: DeployRequest): Promise<Rec
     if (await isFile(path.join(releasePath, "dist", "index.html"))) {
       kind = "static";
       await rm(path.join(releasePath, "node_modules"), { recursive: true, force: true });
+      await run("chmod", ["-R", "a+rX", path.join(releasePath, "dist")]);
       appendLog("Detected a static production build in dist/.");
     } else if (packageInfo.scripts?.start) {
       kind = "node";
