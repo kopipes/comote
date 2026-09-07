@@ -298,7 +298,7 @@ async function runAs(user: string, cwd: string, command: string, args: string[])
     "NODE_ENV=production",
     "PATH=/usr/local/bin:/usr/bin:/bin",
   ];
-  await run("runuser", ["-u", user, "--", "env", ...environment, command, ...args], false, cwd);
+  await run("runuser", ["-u", user, "--", "env", `--chdir=${cwd}`, ...environment, command, ...args]);
 }
 
 async function allocatePort(config: HelperConfig, state: DeployState): Promise<number> {
