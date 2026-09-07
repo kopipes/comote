@@ -11,6 +11,11 @@ if curl --fail --silent --show-error --max-time 10 "$health_url" >/dev/null; the
   exit 0
 fi
 
+sleep 3
+if curl --fail --silent --show-error --max-time 10 "$health_url" >/dev/null; then
+  exit 0
+fi
+
 logger -t comote-healthcheck 'Health probe failed; restarting comote.service'
 systemctl restart comote.service
 sleep 3
