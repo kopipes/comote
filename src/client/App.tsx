@@ -118,6 +118,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
   const streamRef = useRef<EventSource | null>(null);
@@ -281,6 +282,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
         <div className="topbar-meta">
           <span className="private-badge"><span className="status-dot" /> Private</span>
           <span className="device-name">{session.deviceName}</span>
+          <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">⚙</button>
           <button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out">↗</button>
         </div>
       </header>
@@ -350,6 +352,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       </nav>
 
       {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onCreated={projectAdded} />}
+      {settingsOpen && <SettingsDialog project={project} onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
@@ -431,6 +434,115 @@ function AddProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreat
             <button className="secondary" type="button" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="primary" disabled={busy || (mode === "create" ? !name.trim() : !repositoryUrl.trim())}>{busy ? (mode === "import" ? "Importing…" : "Creating…") : (mode === "import" ? "Import project" : "Create project")}</button>
           </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function SettingsDialog({ project, onClose }: { project: Project | null; onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [remoteUrl, setRemoteUrl] = useState("");
+  const [projectBranch, setProjectBranch] = useState("");
+  const [projectBusy, setProjectBusy] = useState(false);
+  const [projectError, setProjectError] = useState("");
+  const [projectSuccess, setProjectSuccess] = useState("");
+
+  useEffect(() => {
+    if (!project) return;
+    setProjectBusy(true);
+    setProjectError("");
+    api.get<{ branch: string; remoteUrl: string }>(`/api/projects/${project.id}/settings`)
+      .then((settings) => {
+        setRemoteUrl(settings.remoteUrl);
+        setProjectBranch(settings.branch);
+      })
+      .catch((cause) => setProjectError((cause as Error).message))
+      .finally(() => setProjectBusy(false));
+  }, [project]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (newPassword !== confirmation) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setPasswordBusy(true);
+    setError("");
+    setSuccess("");
+    try {
+      await api.post("/api/password", { currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmation("");
+      setSuccess("Password changed. Sessions on other devices were signed out.");
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
+  async function saveRemote(event: FormEvent) {
+    event.preventDefault();
+    if (!project) return;
+    setProjectBusy(true);
+    setProjectError("");
+    setProjectSuccess("");
+    try {
+      const settings = await api.post<{ branch: string; remoteUrl: string }>(`/api/projects/${project.id}/settings/remote`, { repositoryUrl: remoteUrl });
+      setRemoteUrl(settings.remoteUrl);
+      setProjectBranch(settings.branch);
+      setProjectSuccess("GitHub remote saved for this project.");
+    } catch (cause) {
+      setProjectError((cause as Error).message);
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  const busy = passwordBusy || projectBusy;
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) onClose();
+    }}>
+      <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div className="dialog-header">
+          <div><p className="eyebrow">Security</p><h2 id="settings-title">Settings</h2></div>
+          <button className="icon-button" type="button" onClick={onClose} disabled={busy} aria-label="Close">×</button>
+        </div>
+        <form className="settings-form" onSubmit={submit}>
+          <h3>Change password</h3>
+          <p className="field-help">Use at least 12 characters. Your current device stays signed in.</p>
+          <label>Current password<input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
+          <label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={12} required /></label>
+          <label>Confirm new password<input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} minLength={12} required /></label>
+          {error && <p className="form-error">{error}</p>}
+          {success && <p className="form-success">{success}</p>}
+          <div className="dialog-actions">
+            <button className="secondary" type="button" onClick={onClose} disabled={busy}>Close</button>
+            <button className="primary" disabled={passwordBusy || !currentPassword || newPassword.length < 12 || !confirmation}>{passwordBusy ? "Saving…" : "Change password"}</button>
+          </div>
+        </form>
+        <form className="settings-form settings-section" onSubmit={saveRemote}>
+          <h3>Project Git remote</h3>
+          {project ? (
+            <>
+              <p className="field-help">Project: {project.name}{projectBranch ? ` · branch ${projectBranch}` : ""}. Public GitHub URLs work now; private access can be connected later.</p>
+              <label>GitHub repository URL<input type="url" value={remoteUrl} onChange={(event) => setRemoteUrl(event.target.value)} placeholder="https://github.com/owner/project" required /></label>
+              {projectError && <p className="form-error">{projectError}</p>}
+              {projectSuccess && <p className="form-success">{projectSuccess}</p>}
+              <div className="dialog-actions">
+                <button className="primary" disabled={projectBusy || !remoteUrl.trim()}>{projectBusy ? "Saving…" : "Save remote"}</button>
+              </div>
+            </>
+          ) : <p className="field-help">Select a project to configure its Git remote.</p>}
         </form>
       </section>
     </div>

@@ -58,6 +58,7 @@ export class ProjectRegistry {
       await mkdir(projectPath, { mode: 0o750 });
       await runGit(this.rootRealPath, ["init", "-b", "main", projectPath]);
       await configureIdentity(projectPath);
+      await ensureInitialCommit(projectPath);
     });
   }
 
@@ -67,7 +68,25 @@ export class ProjectRegistry {
     return this.withNewProject(name, async (projectPath) => {
       await runGit(this.rootRealPath, ["clone", "--origin", "origin", repository.url, projectPath], 120_000);
       await configureIdentity(projectPath);
+      await ensureInitialCommit(projectPath);
     });
+  }
+
+  async settings(id: string): Promise<{ branch: string; remoteUrl: string }> {
+    const project = await this.get(id);
+    const branch = await runGit(project.path, ["branch", "--show-current"]);
+    const remoteUrl = await runGit(project.path, ["remote", "get-url", "origin"]).catch(() => "");
+    return { branch: branch || "main", remoteUrl };
+  }
+
+  async setGithubRemote(id: string, repositoryUrlInput: string): Promise<{ branch: string; remoteUrl: string }> {
+    const project = await this.get(id);
+    const repository = parseGithubRepository(repositoryUrlInput);
+    const exists = await runGit(project.path, ["remote", "get-url", "origin"]).then(() => true).catch(() => false);
+    await runGit(project.path, exists
+      ? ["remote", "set-url", "origin", repository.url]
+      : ["remote", "add", "origin", repository.url]);
+    return this.settings(id);
   }
 
   private async withNewProject(name: string, operation: (projectPath: string) => Promise<void>): Promise<Project> {
@@ -121,13 +140,22 @@ async function configureIdentity(projectPath: string): Promise<void> {
   await runGit(projectPath, ["config", "user.email", "comote@localhost"]);
 }
 
-async function runGit(cwd: string, args: string[], timeout = 30_000): Promise<void> {
+async function ensureInitialCommit(projectPath: string): Promise<void> {
   try {
-    await execFileAsync("git", ["-C", cwd, ...args], {
+    await runGit(projectPath, ["rev-parse", "--verify", "HEAD"]);
+  } catch {
+    await runGit(projectPath, ["commit", "--allow-empty", "-m", "chore: initialize project"]);
+  }
+}
+
+async function runGit(cwd: string, args: string[], timeout = 30_000): Promise<string> {
+  try {
+    const result = await execFileAsync("git", ["-C", cwd, ...args], {
       timeout,
       maxBuffer: 1024 * 1024,
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     });
+    return result.stdout.trim();
   } catch (cause) {
     const error = cause as Error & { stderr?: string };
     const detail = error.stderr?.trim().split("\n").slice(-2).join(" ") || error.message;

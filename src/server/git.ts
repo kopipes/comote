@@ -3,11 +3,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-async function git(cwd: string, args: string[]): Promise<string> {
+async function git(cwd: string, args: string[], extraEnvironment: NodeJS.ProcessEnv = {}): Promise<string> {
   const result = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout: 60_000,
     maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...process.env, ...extraEnvironment, GIT_TERMINAL_PROMPT: "0" },
   });
   return result.stdout.trim();
 }
@@ -40,6 +40,9 @@ export async function gitCommit(
   return git(cwd, ["rev-parse", "--short", "HEAD"]);
 }
 
-export async function gitPush(cwd: string): Promise<string> {
-  return git(cwd, ["push"]);
+export async function gitPush(cwd: string, extraEnvironment: NodeJS.ProcessEnv = {}): Promise<string> {
+  const hasUpstream = await git(cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+    .then(() => true)
+    .catch(() => false);
+  return git(cwd, hasUpstream ? ["push"] : ["push", "-u", "origin", "HEAD"], extraEnvironment);
 }

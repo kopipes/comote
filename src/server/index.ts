@@ -6,7 +6,7 @@ import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitPush, gitStatus } from "./git.js";
-import { verifyPassword } from "./password.js";
+import { PasswordStore } from "./password.js";
 import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
 
@@ -21,12 +21,13 @@ declare global {
 
 const config = loadConfig();
 const sessions = new SessionStore(config.dataDir, config.sessionDays);
+const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const projects = new ProjectRegistry(config.projectsRoot);
 const events = new EventHub();
 const codex = new CodexClient(config, events);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 
-await Promise.all([sessions.init(), projects.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init()]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -61,7 +62,7 @@ app.post("/api/login", async (request, response) => {
 
   const password = typeof request.body?.password === "string" ? request.body.password : "";
   const deviceName = typeof request.body?.deviceName === "string" ? request.body.deviceName : "Unknown device";
-  const valid = config.passwordHash ? await verifyPassword(password, config.passwordHash) : false;
+  const valid = await passwords.verify(password);
   if (!valid) {
     const count = (state?.count ?? 0) + 1;
     loginAttempts.set(ip, {
@@ -90,6 +91,14 @@ app.post("/api/logout", requireCsrf, async (request, response) => {
   response.status(204).end();
 });
 
+app.post("/api/password", requireCsrf, async (request, response) => {
+  const currentPassword = typeof request.body?.currentPassword === "string" ? request.body.currentPassword : "";
+  const newPassword = typeof request.body?.newPassword === "string" ? request.body.newPassword : "";
+  await passwords.change(currentPassword, newPassword);
+  await sessions.revokeAllExcept(request.comoteToken!);
+  response.status(204).end();
+});
+
 app.get("/api/projects", async (_request, response) => {
   response.json({ projects: await projects.list() });
 });
@@ -107,6 +116,15 @@ app.post("/api/projects", requireCsrf, async (request, response) => {
     return;
   }
   response.status(400).json({ error: "Mode must be create or import." });
+});
+
+app.get("/api/projects/:projectId/settings", async (request, response) => {
+  response.json(await projects.settings(param(request, "projectId")));
+});
+
+app.post("/api/projects/:projectId/settings/remote", requireCsrf, async (request, response) => {
+  const repositoryUrl = typeof request.body?.repositoryUrl === "string" ? request.body.repositoryUrl : "";
+  response.json(await projects.setGithubRemote(param(request, "projectId"), repositoryUrl));
 });
 
 app.get("/api/projects/:projectId/threads", async (request, response) => {
@@ -219,7 +237,8 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
   console.error(error);
   const status = message.includes("not found") ? 404
     : message.includes("already exists") || message.includes("already in progress") ? 409
-      : message.startsWith("Invalid") ? 400
+      : message === "Current password is incorrect." ? 401
+        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") ? 400
         : message.startsWith("Git operation failed") ? 502
           : 500;
   response.status(status).json({ error: message });

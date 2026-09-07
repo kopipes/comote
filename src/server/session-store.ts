@@ -65,6 +65,14 @@ export class SessionStore {
     await this.save();
   }
 
+  async revokeAllExcept(token: string): Promise<void> {
+    const keep = hashToken(token);
+    for (const key of this.sessions.keys()) {
+      if (key !== keep) this.sessions.delete(key);
+    }
+    await this.save();
+  }
+
   csrfMatches(session: SessionRecord, supplied: string): boolean {
     const expected = Buffer.from(session.csrf);
     const actual = Buffer.from(supplied);

@@ -65,3 +65,15 @@ test("GitHub imports accept only canonical HTTPS repository URLs", () => {
     assert.throws(() => parseGithubRepository(value), /Invalid GitHub/);
   }
 });
+
+test("project settings can add a canonical GitHub remote", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
+  const registry = new ProjectRegistry(root);
+  await registry.init();
+  const project = await registry.create("remote-app");
+  assert.deepEqual(await registry.settings(project.id), { branch: "main", remoteUrl: "" });
+  assert.deepEqual(await registry.setGithubRemote(project.id, "https://github.com/kopipes/remote-app"), {
+    branch: "main",
+    remoteUrl: "https://github.com/kopipes/remote-app.git",
+  });
+});

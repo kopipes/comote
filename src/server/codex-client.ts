@@ -63,12 +63,19 @@ export class CodexClient {
     return result.thread;
   }
 
-  async startTurn(threadId: string, cwd: string, text: string, deviceName: string): Promise<JsonObject> {
+  async startTurn(threadId: string, cwd: string, text: string, deviceName: string, writableRoots: string[] = [cwd]): Promise<JsonObject> {
     await this.ensureThreadLoaded(threadId, cwd);
     const result = await this.request<{ turn: JsonObject }>("turn/start", {
       threadId,
       cwd,
       input: [{ type: "text", text }],
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots,
+        networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      },
     });
     this.events.publish(threadId, "request_origin", { deviceName });
     return result.turn;
@@ -88,9 +95,7 @@ export class CodexClient {
     if (extractThreadId(approval.params) !== threadId) throw new Error("Approval does not belong to this thread.");
     if (!this.process?.stdin.writable) throw new Error("Codex is not running.");
 
-    const result = approval.method === "item/permissions/requestApproval"
-      ? { permissions: {}, scope: "turn" }
-      : { decision };
+    const result = buildApprovalResponse(approval.method, approval.params, decision);
     this.write({ id: approval.rpcId, result });
     this.approvals.delete(externalId);
   }
@@ -223,12 +228,16 @@ export class CodexClient {
       const externalId = randomUUID();
       this.approvals.set(externalId, { rpcId: message.id, method, params });
       if (threadId) {
+        const networkContext = params.networkApprovalContext as JsonObject | undefined;
         this.events.publish(threadId, "approval", {
           requestId: externalId,
           method,
           reason: params.reason ?? "Codex needs your approval.",
           command: params.command ?? null,
           cwd: params.cwd ?? null,
+          host: networkContext?.host ?? null,
+          protocol: networkContext?.protocol ?? null,
+          permissions: params.permissions ?? null,
         });
       }
       return;
@@ -266,6 +275,21 @@ export class CodexClient {
     }
     this.pending.clear();
   }
+}
+
+export function buildApprovalResponse(
+  method: string,
+  params: JsonObject,
+  decision: "accept" | "decline" | "cancel",
+): JsonObject {
+  if (method !== "item/permissions/requestApproval") return { decision };
+  const granted: JsonObject = {};
+  if (decision === "accept") {
+    const requested = (params.permissions ?? {}) as JsonObject;
+    if (requested.network != null) granted.network = requested.network;
+    if (requested.fileSystem != null) granted.fileSystem = requested.fileSystem;
+  }
+  return { permissions: granted, scope: "turn" };
 }
 
 function extractThreadId(params: JsonObject): string {

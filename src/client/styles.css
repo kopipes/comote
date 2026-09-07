@@ -185,6 +185,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .secondary:hover:not(:disabled) { background: var(--panel-2); }
 
 .form-error { margin: -4px 0 0; color: var(--danger); font-size: 13px; }
+.form-success { margin: -4px 0 0; color: var(--mint); font-size: 13px; }
 .secure-note { display: flex; align-items: center; gap: 8px; margin: 24px 0 0; color: var(--subtle); font-size: 11px; }
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px rgba(101,245,194,.5); }
 
@@ -352,6 +353,8 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 .dialog {
   width: min(100%, 500px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
   border: 1px solid var(--line-bright);
   border-radius: 20px;
   background: #0b1714;
@@ -364,6 +367,9 @@ button:not(:disabled):active { transform: translateY(1px); }
 .mode-tabs button { min-height: 37px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 700; }
 .mode-tabs button.active { background: var(--panel-2); color: var(--mint); }
 .dialog form { display: grid; gap: 18px; }
+.dialog .settings-form { margin-top: 24px; }
+.settings-form h3 { margin: 0; font-size: 15px; }
+.settings-section { padding-top: 22px; border-top: 1px solid var(--line); }
 .optional { color: var(--subtle); font-weight: 500; }
 .field-help { margin: -6px 0 0; color: var(--subtle); font-size: 11px; line-height: 1.5; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 5px; }

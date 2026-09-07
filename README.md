@@ -8,6 +8,7 @@ Comote is a private, single-user PWA for continuing the same VPS-hosted developm
 - Comote has its own password/session gate in addition to Tailscale device identity.
 - Session cookies are `HttpOnly`, `Secure`, and `SameSite=Strict`; mutating requests require a per-session CSRF token.
 - Passwords use Node's built-in scrypt and only the derived hash is stored.
+- Changing the password from Settings keeps the current device signed in and revokes every other Comote session.
 - Login attempts are rate-limited.
 - Codex App Server is spawned lazily over stdio and never receives a public listener.
 - Projects are restricted to direct Git workspaces under `COMOTE_PROJECTS_ROOT`.
@@ -49,6 +50,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 
 - Private login with remembered device label
 - Create blank Git projects or import public GitHub repositories from the Projects pane
+- Change the Comote password and configure the selected project's public GitHub remote from Settings
 - Project and Codex thread discovery
 - New/resumed natural-language sessions
 - Live assistant, command, file-change, status, and approval events
@@ -57,4 +59,4 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Explicit commit with provenance trailers and explicit push
 - Responsive mobile/desktop layout and installable PWA shell
 
-Passkeys, managed preview URLs, worktree-per-task isolation, and push notifications are intentionally scheduled after the private end-to-end path is validated on the VPS.
+Private GitHub credentials, passkeys, managed preview URLs, worktree-per-task isolation, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
