@@ -47,7 +47,7 @@ export class CodexClient {
     const result = await this.request<{ thread: JsonObject }>("thread/start", {
       cwd,
       approvalPolicy: "on-request",
-      sandbox: "workspaceWrite",
+      sandbox: "workspace-write",
       serviceName: "comote",
     });
     const id = String(result.thread.id);
@@ -111,7 +111,7 @@ export class CodexClient {
       threadId,
       cwd,
       approvalPolicy: "on-request",
-      sandbox: "workspaceWrite",
+      sandbox: "workspace-write",
     });
     this.loadedThreads.add(threadId);
   }
