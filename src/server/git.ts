@@ -1,0 +1,45 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const result = await execFileAsync("git", ["-C", cwd, ...args], {
+    timeout: 60_000,
+    maxBuffer: 2 * 1024 * 1024,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  return result.stdout.trim();
+}
+
+export async function gitStatus(cwd: string): Promise<{ branch: string; status: string; diff: string }> {
+  const [branch, status, diff] = await Promise.all([
+    git(cwd, ["branch", "--show-current"]),
+    git(cwd, ["status", "--short"]),
+    git(cwd, ["diff", "--no-ext-diff", "--", "."]),
+  ]);
+  return { branch: branch || "detached", status, diff: diff.slice(0, 500_000) };
+}
+
+export async function gitCommit(
+  cwd: string,
+  message: string,
+  deviceName: string,
+  sessionId: string,
+): Promise<string> {
+  const cleanMessage = message.trim();
+  if (!cleanMessage || cleanMessage.length > 500) throw new Error("Commit message must be 1–500 characters.");
+  await git(cwd, ["add", "-A"]);
+  const trailers = [
+    `Requested-From: ${deviceName}`,
+    "Developed-On: cloudeka48",
+    "Assisted-By: Codex",
+    `Comote-Session: ${sessionId}`,
+  ].join("\n");
+  await git(cwd, ["commit", "-m", cleanMessage, "-m", trailers]);
+  return git(cwd, ["rev-parse", "--short", "HEAD"]);
+}
+
+export async function gitPush(cwd: string): Promise<string> {
+  return git(cwd, ["push"]);
+}
