@@ -12,6 +12,7 @@ import {
   rename,
   rm,
   symlink,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -327,7 +328,7 @@ async function portAvailable(port: number): Promise<boolean> {
 }
 
 async function ensureCertificate(config: HelperConfig, domain: string): Promise<void> {
-  if (await isFile(path.join("/etc/letsencrypt/live", domain, "fullchain.pem"))) return;
+  if (await fileExists(path.join("/etc/letsencrypt/live", domain, "fullchain.pem"))) return;
   appendLog(`Requesting a TLS certificate for ${domain}.`);
   await installNginx(config, domain.split(".")[0], domain, "pending", 0, "", false);
   await run("certbot", [
@@ -507,6 +508,10 @@ async function isFile(target: string): Promise<boolean> {
 
 async function isDirectory(target: string): Promise<boolean> {
   return Boolean((await lstat(target).catch(() => null))?.isDirectory());
+}
+
+async function fileExists(target: string): Promise<boolean> {
+  return Boolean((await stat(target).catch(() => null))?.isFile());
 }
 
 async function main(): Promise<void> {
