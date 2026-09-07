@@ -135,6 +135,7 @@ async function deploy(config: HelperConfig, request: DeployRequest): Promise<Rec
   try {
     await extractGitArchive(sourcePath, sha, releasePath);
     await recursivelyOwn(releasePath, appUser);
+    await chmod(releasePath, 0o755);
     const packageInfo = await readPackage(releasePath);
     await runAs(appUser, releasePath, "npm", ["ci", "--include=dev", "--no-audit", "--no-fund"]);
     if (packageInfo.scripts?.build) await runAs(appUser, releasePath, "npm", ["run", "build"]);
@@ -255,12 +256,14 @@ async function ensureAppUser(user: string, appRoot: string): Promise<void> {
   const passwd = (await run("getent", ["passwd", user])).stdout.trim().split(":");
   const uid = Number(passwd[2]);
   const gid = Number(passwd[3]);
-  await mkdir(path.join(appRoot, "releases"), { recursive: true, mode: 0o755 });
+  const releasesRoot = path.join(appRoot, "releases");
+  await mkdir(releasesRoot, { recursive: true, mode: 0o755 });
   await mkdir(path.join(appRoot, ".home", ".npm"), { recursive: true, mode: 0o700 });
   await chown(appRoot, uid, gid);
   await chown(path.join(appRoot, ".home"), uid, gid);
   await chown(path.join(appRoot, ".home", ".npm"), uid, gid);
   await chmod(appRoot, 0o755);
+  await chmod(releasesRoot, 0o755);
 }
 
 async function extractGitArchive(sourcePath: string, sha: string, releasePath: string): Promise<void> {
