@@ -50,4 +50,4 @@ Rollback by repointing the release symlink to a known-good release, then restart
 
 All browser clients operate on the same VPS workspace. Codex threads persist under the `coder` account and can be resumed from another device. Commits made by the Comote UI include `Requested-From`, `Developed-On`, `Assisted-By`, and `Comote-Session` trailers so the origin remains visible in Git history.
 
-The repository currently has no upstream Git remote. Add a private remote before relying on Git as an off-VPS backup, then use the explicit Push action in Comote.
+The repository uses `https://github.com/kopipes/comote.git` as its off-VPS Git remote. The VPS workspace uses a dedicated, repository-scoped SSH deploy key; that key must be registered on GitHub with write access before the explicit Push action can authenticate.
