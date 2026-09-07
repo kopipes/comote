@@ -40,7 +40,15 @@ tar --zstd -cpf "$temporary" \
   home/coder/.ssh \
   home/coder/projects \
   etc/comote \
-  etc/systemd/system/comote.service
+  etc/nginx/sites-available \
+  etc/nginx/sites-enabled \
+  etc/letsencrypt \
+  etc/systemd/system/comote.service \
+  etc/systemd/system/comote-app@.service \
+  etc/systemd/system/comote-deploy.socket \
+  etc/systemd/system/comote-deploy@.service \
+  srv/comote-apps \
+  var/lib/comote-deploy
 
 tar --zstd -tf "$temporary" >/dev/null
 mv "$temporary" "$archive"

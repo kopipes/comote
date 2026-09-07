@@ -64,6 +64,16 @@ test("deployment remains disabled when no production domain is configured", asyn
   assert.throws(() => manager.start(project, "demo"), /not configured/);
 });
 
+test("the Comote workspace cannot be published through its own deployment broker", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "comote-deployment-self-"));
+  const manager = new DeploymentManager(dataDir, "apps.example.com", "/unused");
+  const project: Project = { id: "comote", name: "comote", path: "/projects/comote" };
+  await manager.init();
+  assert.equal(manager.status(project).enabled, false);
+  assert.match(manager.status(project).disabledReason, /stays private/);
+  assert.throws(() => manager.start(project, "comote"), /stays private/);
+});
+
 async function waitFor(predicate: () => boolean): Promise<void> {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
