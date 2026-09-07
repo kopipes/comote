@@ -517,6 +517,6 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1]?.endsWith(`${path.sep}${path.basename(fileURLToPath(import.meta.url))}`)) {
   void main();
 }
