@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Comote recovery backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Jakarta
+Persistent=true
+RandomizedDelaySec=10m
+Unit=comote-backup.service
+
+[Install]
+WantedBy=timers.target
+

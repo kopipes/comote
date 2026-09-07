@@ -60,5 +60,6 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Explicit commit with provenance trailers and explicit push
 - Explicit merge from a clean task branch into the canonical branch, also with provenance trailers
 - Responsive mobile/desktop layout and installable PWA shell
+- Daily verified local recovery backups and a five-minute self-healing health probe on the VPS
 
 For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. Private GitHub credentials, passkeys, managed preview URLs, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.

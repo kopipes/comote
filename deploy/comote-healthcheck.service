@@ -1,0 +1,10 @@
+[Unit]
+Description=Probe and recover the Comote web service
+After=comote.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/comote-healthcheck
+PrivateTmp=true
+NoNewPrivileges=true
+

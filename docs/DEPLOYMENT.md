@@ -25,6 +25,7 @@ Nginx remains installed for future public applications, but its service is disab
 - Codex login and sessions: `/home/coder/.codex`
 - Root-only environment: `/etc/comote/comote.env`
 - Service definition: `/etc/systemd/system/comote.service`
+- Root-only local backups: `/var/backups/comote` (14-day retention)
 
 The service runs as the locked, non-sudo `coder` account. Its systemd sandbox grants write access only to the Comote state, Codex state, and project workspace paths.
 
@@ -37,6 +38,7 @@ ssh cloudeka48 'sudo systemctl status comote.service --no-pager'
 ssh cloudeka48 'curl -sS http://127.0.0.1:4173/api/health'
 ssh cloudeka48 'tailscale serve status'
 ssh cloudeka48 'sudo journalctl -u comote.service -n 100 --no-pager'
+ssh cloudeka48 'systemctl list-timers comote-backup.timer comote-healthcheck.timer --no-pager'
 ```
 
 Restart without changing data:
@@ -44,6 +46,8 @@ Restart without changing data:
 ```sh
 ssh cloudeka48 'sudo systemctl restart comote.service'
 ```
+
+A health timer probes Comote every five minutes and performs one automatic restart if the local HTTP health endpoint fails. A daily backup runs at approximately 03:30 Asia/Jakarta, briefly stops Comote for a consistent snapshot, verifies the archive, restarts the service, and retains 14 days. These archives are root-only and remain on the same VPS, so an off-VPS backup is still recommended later.
 
 Rollback by repointing the release symlink to a known-good release, then restart. Confirm the exact release path before running the command.
 
