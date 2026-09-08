@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
+import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
 
 type AuthState = Session | null | undefined;
 
@@ -209,6 +209,10 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [models, setModels] = useState<CodexModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [modelBusy, setModelBusy] = useState(false);
   const [git, setGit] = useState<GitState | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -220,6 +224,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
   const streamRef = useRef<EventSource | null>(null);
   const gitRequestRef = useRef(0);
+  const modelRequestRef = useRef(0);
 
   useEffect(() => {
     api.get<{ projects: Project[] }>("/api/projects")
@@ -228,6 +233,13 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
         if (projects[0]) setProject(projects[0]);
       })
       .catch((cause) => setError((cause as Error).message));
+  }, []);
+
+  useEffect(() => {
+    api.get<{ models: CodexModel[] }>("/api/models")
+      .then(({ models }) => setModels(models))
+      .catch((cause) => setError((cause as Error).message))
+      .finally(() => setModelsLoading(false));
   }, []);
 
   const refreshGit = useCallback(async () => {
@@ -257,6 +269,23 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       .then(({ threads }) => setThreads(threads))
       .catch((cause) => setError((cause as Error).message));
   }, [project?.id, showArchived]);
+
+  useEffect(() => {
+    const requestId = ++modelRequestRef.current;
+    setSelectedModel("");
+    if (!project || !thread) return;
+    setModelBusy(true);
+    api.get<{ model: string }>(`/api/projects/${project.id}/threads/${thread.id}/model`)
+      .then(({ model }) => {
+        if (requestId === modelRequestRef.current) setSelectedModel(model);
+      })
+      .catch((cause) => {
+        if (requestId === modelRequestRef.current) setError((cause as Error).message);
+      })
+      .finally(() => {
+        if (requestId === modelRequestRef.current) setModelBusy(false);
+      });
+  }, [project?.id, thread?.id]);
 
   useEffect(() => {
     void refreshGit();
@@ -356,6 +385,23 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
     } catch (cause) {
       setRunning(false);
       setError((cause as Error).message);
+    }
+  }
+
+  async function chooseModel(model: string) {
+    if (!project || !thread) return;
+    const previous = selectedModel;
+    setSelectedModel(model);
+    setModelBusy(true);
+    setError("");
+    try {
+      const saved = await api.post<{ model: string }>(`/api/projects/${project.id}/threads/${thread.id}/model`, { model });
+      setSelectedModel(saved.model);
+    } catch (cause) {
+      setSelectedModel(previous);
+      setError((cause as Error).message);
+    } finally {
+      setModelBusy(false);
     }
   }
 
@@ -465,7 +511,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
               {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={decide} />)}
               {running && <div className="thinking"><span /><span /><span /> Codex is working</div>}
             </div>
-            {!showArchived && <Composer disabled={running} onSend={sendMessage} />}
+            {!showArchived && <Composer disabled={running} onSend={sendMessage} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
           </>
         )}
       </main>
@@ -816,8 +862,17 @@ function ApprovalCard({ approval, onDecision }: { approval: Approval; onDecision
   );
 }
 
-function Composer({ disabled, onSend }: { disabled: boolean; onSend: (text: string) => void }) {
+function Composer({ disabled, onSend, models, selectedModel, modelBusy, onModelChange }: {
+  disabled: boolean;
+  onSend: (text: string) => void;
+  models: CodexModel[];
+  selectedModel: string;
+  modelBusy: boolean;
+  onModelChange: (model: string) => void;
+}) {
   const [text, setText] = useState("");
+  const defaultModel = models.find((model) => model.isDefault);
+  const selected = models.find((model) => model.model === selectedModel);
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = text.trim();
@@ -834,7 +889,17 @@ function Composer({ disabled, onSend }: { disabled: boolean; onSend: (text: stri
         }
       }} />
       <button className="send-button" disabled={disabled || !text.trim()} aria-label="Send">↑</button>
-      <small>Enter to send · Shift + Enter for a new line</small>
+      <div className="composer-footer">
+        <small>Enter to send · Shift + Enter for a new line</small>
+        <label className="model-picker" title={selected?.description || defaultModel?.description || "Use the default model selected by Codex."}>
+          <span>Model</span>
+          <select value={selectedModel} disabled={disabled || modelBusy} onChange={(event) => onModelChange(event.target.value)} aria-label="Codex model for this session">
+            <option value="">{defaultModel ? `Auto · ${defaultModel.displayName}` : "Auto"}</option>
+            {selectedModel && !selected && <option value={selectedModel}>{selectedModel} · unavailable</option>}
+            {models.map((model) => <option key={model.model} value={model.model}>{model.displayName}</option>)}
+          </select>
+        </label>
+      </div>
     </form>
   );
 }

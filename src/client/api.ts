@@ -36,6 +36,16 @@ export interface ThreadItem {
   changes?: Array<{ path: string; kind: string; diff?: string }>;
 }
 
+export interface CodexModel {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
+}
+
 export interface GitState {
   branch: string;
   status: string;

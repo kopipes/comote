@@ -7,6 +7,16 @@ import { EventHub } from "./event-hub.js";
 
 type JsonObject = Record<string, unknown>;
 
+export interface CodexModel {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
+}
+
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -45,6 +55,24 @@ export class CodexClient {
     return result.data ?? [];
   }
 
+  async listModels(): Promise<CodexModel[]> {
+    const models: CodexModel[] = [];
+    let cursor: string | null = null;
+    do {
+      const result: { data?: JsonObject[]; nextCursor?: string | null } = await this.request("model/list", {
+        limit: 100,
+        includeHidden: false,
+        ...(cursor ? { cursor } : {}),
+      });
+      for (const candidate of result.data ?? []) {
+        const model = parseModel(candidate);
+        if (model) models.push(model);
+      }
+      cursor = result.nextCursor ?? null;
+    } while (cursor);
+    return [...new Map(models.map((model) => [model.model, model])).values()];
+  }
+
   async startThread(cwd: string): Promise<JsonObject> {
     const result = await this.request<{ thread: JsonObject }>("thread/start", {
       cwd,
@@ -65,12 +93,13 @@ export class CodexClient {
     return result.thread;
   }
 
-  async startTurn(threadId: string, cwd: string, text: string, deviceName: string, writableRoots: string[] = [cwd]): Promise<JsonObject> {
+  async startTurn(threadId: string, cwd: string, text: string, deviceName: string, writableRoots: string[] = [cwd], model = ""): Promise<JsonObject> {
     await this.ensureThreadLoaded(threadId, cwd);
     const result = await this.request<{ turn: JsonObject }>("turn/start", {
       threadId,
       cwd,
       input: [{ type: "text", text }],
+      ...(model ? { model } : {}),
       sandboxPolicy: {
         type: "workspaceWrite",
         writableRoots,
@@ -291,6 +320,30 @@ export class CodexClient {
     }
     this.pending.clear();
   }
+}
+
+function parseModel(value: JsonObject): CodexModel | null {
+  if (typeof value.id !== "string" || typeof value.model !== "string" || typeof value.displayName !== "string") return null;
+  const efforts = Array.isArray(value.supportedReasoningEfforts)
+    ? value.supportedReasoningEfforts.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const option = entry as JsonObject;
+      if (typeof option.reasoningEffort !== "string") return [];
+      return [{
+        reasoningEffort: option.reasoningEffort,
+        description: typeof option.description === "string" ? option.description : "",
+      }];
+    })
+    : [];
+  return {
+    id: value.id,
+    model: value.model,
+    displayName: value.displayName,
+    description: typeof value.description === "string" ? value.description : "",
+    isDefault: value.isDefault === true,
+    defaultReasoningEffort: typeof value.defaultReasoningEffort === "string" ? value.defaultReasoningEffort : "",
+    supportedReasoningEfforts: efforts,
+  };
 }
 
 export function createCodexEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

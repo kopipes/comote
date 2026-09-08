@@ -54,6 +54,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Change the Comote password and configure the selected project's public GitHub remote from Settings
 - Project and Codex thread discovery
 - New/resumed natural-language sessions
+- Per-session model selector populated from the models available to the VPS Codex account; Auto follows the Codex default
 - Archive, restore, or permanently delete sessions from the session menu; deletion refuses uncommitted or unmerged task work
 - New sessions run in an isolated `comote/task-*` Git worktree; existing sessions remain compatible with the canonical workspace
 - Live assistant, command, file-change, status, and approval events

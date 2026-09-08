@@ -14,6 +14,7 @@ import { PreviewManager } from "./preview.js";
 import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
 import { WorktreeManager, type ThreadWorkspace } from "./worktrees.js";
+import { ThreadModelStore } from "./thread-models.js";
 
 declare global {
   namespace Express {
@@ -35,10 +36,11 @@ const previews = new PreviewManager(config.previewPort, config.previewUrl);
 const deployments = new DeploymentManager(config.dataDir, config.deployDomain, config.deploySocket);
 const events = new EventHub();
 const codex = new CodexClient(config, events);
+const threadModels = new ThreadModelStore(config.dataDir);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const mergingProjects = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init()]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -149,6 +151,10 @@ app.post("/api/password", requireCsrf, async (request, response) => {
   response.status(204).end();
 });
 
+app.get("/api/models", async (_request, response) => {
+  response.json({ models: await codex.listModels() });
+});
+
 app.get("/api/projects", async (_request, response) => {
   response.json({ projects: await projects.list() });
 });
@@ -206,6 +212,29 @@ app.get("/api/projects/:projectId/threads/:threadId", async (request, response) 
   response.json({ thread });
 });
 
+app.get("/api/projects/:projectId/threads/:threadId/model", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  response.json({ model: threadModels.get(threadId) });
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/model", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  const model = typeof request.body?.model === "string" ? request.body.model.trim() : "";
+  if (model) {
+    const available = await codex.listModels();
+    if (!available.some((candidate) => candidate.model === model)) {
+      response.status(400).json({ error: "Invalid or unavailable Codex model." });
+      return;
+    }
+  }
+  await threadModels.set(threadId, model);
+  response.json({ model });
+});
+
 app.post("/api/projects/:projectId/threads/:threadId/archive", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   const threadId = param(request, "threadId");
@@ -230,6 +259,7 @@ app.post("/api/projects/:projectId/threads/:threadId/delete", requireCsrf, async
   if (previews.status(project, threadId).selected) await previews.stop();
   await codex.deleteThread(threadId);
   await worktrees.remove(project, threadId);
+  await threadModels.remove(threadId);
   response.status(204).end();
 });
 
@@ -248,6 +278,7 @@ app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, asy
     text,
     request.comoteSession!.deviceName,
     workspace.writableRoots,
+    threadModels.get(threadId),
   );
   response.status(202).json({ turn });
 });
