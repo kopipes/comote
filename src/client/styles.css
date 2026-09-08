@@ -34,7 +34,7 @@ body {
 button, input, textarea { font: inherit; }
 button { color: inherit; }
 
-button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible {
   outline: 2px solid var(--mint);
   outline-offset: 2px;
 }
@@ -213,7 +213,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .topbar-meta { display: flex; align-items: center; gap: 12px; }
 .private-badge { display: flex; align-items: center; gap: 7px; padding: 6px 10px; }
 .device-name { color: var(--muted); font-size: 12px; }
-.icon-button { width: 34px; height: 34px; border-radius: 9px; background: transparent; color: var(--muted); font-size: 19px; }
+.icon-button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: transparent; color: var(--muted); font-size: 19px; text-decoration: none; }
 .icon-button:hover { background: var(--panel-2); color: var(--ink); }
 
 .projects-pane, .threads-pane, .changes-pane, .conversation-pane { min-height: 0; }

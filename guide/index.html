@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Panduan lengkap menggunakan Comote untuk coding dengan Codex dari laptop atau handphone." />
+  <meta name="theme-color" content="#07100d" />
+  <title>Panduan Comote — Coding dari mana saja</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#isi">Lewati ke isi panduan</a>
+  <header class="site-header">
+    <a class="brand" href="#atas" aria-label="Panduan Comote"><span>C</span> comote <small>guide</small></a>
+    <nav aria-label="Navigasi utama">
+      <a href="#mulai">Mulai</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#deploy">Deploy</a>
+      <a href="#bantuan">Bantuan</a>
+    </nav>
+    <a class="button compact" href="https://comote-vps.tailb6b750.ts.net/">Buka Comote <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="isi">
+    <section class="hero" id="atas">
+      <div class="hero-copy">
+        <p class="eyebrow">Panduan untuk pemula</p>
+        <h1>Coding dari mana saja, cukup dengan berbicara.</h1>
+        <p class="lead">Comote menghubungkan laptop atau HP Anda ke satu development workspace di VPS. Tulis permintaan dengan kalimat biasa, Codex mengerjakan kodenya, lalu Anda review, commit, push, dan deploy dari satu tempat.</p>
+        <div class="hero-actions">
+          <a class="button" href="#mulai">Mulai dalam 5 langkah</a>
+          <a class="button ghost" href="#ringkas">Lihat cara kerjanya</a>
+        </div>
+        <p class="microcopy"><span class="dot"></span> Comote bersifat privat. Link aplikasi production dapat dibuat publik.</p>
+      </div>
+      <div class="hero-card" aria-label="Ringkasan alur Comote">
+        <div class="mini-device phone"><span></span><strong>HP</strong><small>Chat &amp; approve</small></div>
+        <div class="flow-line"></div>
+        <div class="mini-vps"><span>C</span><strong>VPS</strong><small>Code + database</small></div>
+        <div class="flow-line"></div>
+        <div class="mini-device"><span></span><strong>Laptop</strong><small>Workspace yang sama</small></div>
+        <div class="github-pill">GitHub <span>source of truth untuk code</span></div>
+      </div>
+    </section>
+
+    <section class="concept" id="ringkas">
+      <div>
+        <p class="eyebrow">Gambaran sederhana</p>
+        <h2>Yang berpindah hanya layar Anda, bukan development-nya.</h2>
+      </div>
+      <div class="concept-grid">
+        <article><span class="number">01</span><h3>VPS adalah komputer kerja</h3><p>Project, Codex, preview, database, dan aplikasi yang berjalan berada di VPS.</p></article>
+        <article><span class="number">02</span><h3>HP dan laptop adalah pengendali</h3><p>Buka Comote dari perangkat mana saja. Semua perangkat melihat workspace yang sama.</p></article>
+        <article><span class="number">03</span><h3>GitHub menyimpan code resmi</h3><p>Setelah menekan Push, commit tersimpan di GitHub. Database dan secret tidak ikut masuk GitHub.</p></article>
+      </div>
+      <div class="sot-strip">
+        <strong>Aturan praktis:</strong>
+        <span><b>Code</b> → GitHub</span>
+        <span><b>Database &amp; file runtime</b> → VPS</span>
+        <span><b>Password &amp; secret</b> → penyimpanan privat VPS</span>
+      </div>
+    </section>
+
+    <section id="mulai">
+      <div class="section-heading">
+        <div><p class="eyebrow">Quick start</p><h2>Mulai dalam 5 langkah</h2></div>
+        <p>Ikuti urutan ini saat pertama kali menggunakan Comote.</p>
+      </div>
+
+      <div class="steps">
+        <article class="step">
+          <div class="step-copy"><span class="step-number">1</span><div><h3>Hubungkan perangkat ke Tailscale</h3><p>Pasang Tailscale di laptop atau HP, lalu login ke tailnet yang sama. Setelah terhubung, buka:</p><a class="inline-link" href="https://comote-vps.tailb6b750.ts.net/">comote-vps.tailb6b750.ts.net ↗</a><div class="tip"><strong>Kenapa?</strong> Alamat Comote tidak dibuka ke internet umum. Tailscale menjadi pintu privat menuju VPS.</div></div></div>
+        </article>
+
+        <article class="step screenshot-step">
+          <div class="step-copy"><span class="step-number">2</span><div><h3>Login ke Comote</h3><p>Beri nama perangkat, misalnya <code>HP Bob</code> atau <code>Laptop</code>, lalu masukkan password Comote. Nama perangkat otomatis dicatat pada commit yang dibuat dari UI.</p></div></div>
+          <figure><img src="assets/01-login.png" alt="Halaman login Comote dengan kolom nama perangkat dan password" /><figcaption>Login Comote adalah lapisan keamanan kedua setelah Tailscale.</figcaption></figure>
+        </article>
+
+        <article class="step screenshot-step">
+          <div class="step-copy"><span class="step-number">3</span><div><h3>Tambahkan project</h3><p>Tekan <b>+ Add</b>. Pilih <b>Import GitHub</b> bila repository sudah ada, atau <b>Create new</b> untuk project kosong.</p><ul><li>Public repository dapat langsung di-import.</li><li>Private repository memerlukan akses GitHub pada VPS.</li><li>Project kosong perlu dihubungkan ke repository GitHub sebelum Push.</li></ul></div></div>
+          <figure><img src="assets/03-add-project.png" alt="Dialog Add project pada Comote dengan tab Import GitHub dan Create new" /><figcaption>Tempel URL seperti <code>https://github.com/username/nama-project</code>.</figcaption></figure>
+        </article>
+
+        <article class="step screenshot-step">
+          <div class="step-copy"><span class="step-number">4</span><div><h3>Mulai session dan tulis permintaan biasa</h3><p>Pilih project, tekan <b>+ New</b>, lalu tulis apa yang Anda inginkan. Tidak perlu menghafal command terminal.</p><div class="prompt-list"><button type="button" data-copy="Buatkan landing page untuk toko kopi, responsif untuk HP.">“Buatkan landing page untuk toko kopi, responsif untuk HP.”</button><button type="button" data-copy="Cek aplikasi ini, jalankan test, lalu perbaiki error yang ditemukan.">“Cek aplikasi ini, jalankan test, lalu perbaiki error yang ditemukan.”</button><button type="button" data-copy="Gunakan SQLite untuk data produk dan buat halaman tambah, edit, dan hapus produk.">“Gunakan SQLite untuk data produk dan buat halaman tambah, edit, dan hapus produk.”</button></div><p class="copy-note" aria-live="polite"></p></div></div>
+          <figure><img src="assets/02-dashboard.png" alt="Dashboard Comote dengan daftar project, session, area chat, dan panel Changes" /><figcaption>Desktop menampilkan project, session, chat, dan Changes sekaligus.</figcaption></figure>
+        </article>
+
+        <article class="step">
+          <div class="step-copy"><span class="step-number">5</span><div><h3>Review hasil sebelum menyimpan</h3><p>Codex dapat meminta approval sebelum menjalankan tindakan tertentu. Baca alasan atau command-nya, kemudian pilih <b>Allow once</b> bila sesuai. Setelah selesai, periksa daftar file dan diff di panel <b>Changes</b>.</p><div class="warning"><strong>Jangan asal approve.</strong> Untuk tindakan menghapus data, mengubah server, atau mengirim sesuatu ke layanan luar, pastikan targetnya benar.</div></div></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="workflow-section" id="workflow">
+      <div class="section-heading light">
+        <div><p class="eyebrow">Menyimpan pekerjaan</p><h2>Workflow code yang aman</h2></div>
+        <p>Setiap session baru bekerja di task branch terpisah, sehingga dua pekerjaan tidak saling menimpa.</p>
+      </div>
+      <div class="workflow" role="list" aria-label="Alur penyimpanan code">
+        <div role="listitem"><span>1</span><strong>Coding</strong><small>Berikan instruksi ke Codex</small></div><i>→</i>
+        <div role="listitem"><span>2</span><strong>Review</strong><small>Lihat file dan diff</small></div><i>→</i>
+        <div role="listitem"><span>3</span><strong>Commit task</strong><small>Simpan checkpoint</small></div><i>→</i>
+        <div role="listitem"><span>4</span><strong>Merge main</strong><small>Gabungkan hasil final</small></div><i>→</i>
+        <div role="listitem"><span>5</span><strong>Push main</strong><small>Kirim ke GitHub</small></div><i>→</i>
+        <div role="listitem"><span>6</span><strong>Deploy</strong><small>Terbitkan aplikasi</small></div>
+      </div>
+      <div class="two-column">
+        <article class="explain-card"><h3>Commit task</h3><p>Isi <b>Commit message</b> dengan kalimat singkat seperti <code>feat: tambah halaman produk</code>, lalu tekan <b>Commit with device note</b>.</p><p>Commit otomatis mencatat perangkat, VPS, Codex, dan session asal.</p></article>
+        <article class="explain-card"><h3>Push task vs Push main</h3><p><b>Push task branch</b> hanya mengirim cabang pekerjaan untuk backup/review. <b>Push main</b> mengirim versi resmi yang sudah digabungkan ke GitHub.</p></article>
+        <article class="explain-card"><h3>Merge into main</h3><p>Lakukan setelah task bersih dan sudah di-commit. Jika ada konflik, Comote berhenti aman; minta Codex membantu menyelesaikannya.</p></article>
+        <article class="explain-card"><h3>Repository public tetap butuh izin push</h3><p>Public berarti siapa pun boleh membaca, bukan menulis. Push tetap memerlukan SSH key atau credential GitHub dengan akses ke repository.</p></article>
+      </div>
+    </section>
+
+    <section id="github">
+      <div class="section-heading">
+        <div><p class="eyebrow">GitHub</p><h2>Menghubungkan repository</h2></div>
+        <p>Lakukan satu kali untuk project baru yang dibuat dari Comote.</p>
+      </div>
+      <div class="github-grid">
+        <ol class="numbered-list">
+          <li><span>1</span><div><strong>Buat repository kosong di GitHub</strong><p>Untuk menghindari konflik awal, jangan centang README atau .gitignore jika project sudah dibuat di Comote.</p></div></li>
+          <li><span>2</span><div><strong>Buka Settings di Comote</strong><p>Pilih project terlebih dahulu, lalu tekan ikon roda gigi.</p></div></li>
+          <li><span>3</span><div><strong>Isi GitHub repository URL</strong><p>Tempel URL repository, tekan <b>Save remote</b>, kemudian gunakan <b>Push main</b>.</p></div></li>
+          <li><span>4</span><div><strong>Pastikan VPS memiliki akses tulis</strong><p>Deploy key yang ada untuk repository Comote tidak otomatis berlaku pada repository lain. Gunakan key akun GitHub untuk banyak repo, atau deploy key tersendiri per repo.</p></div></li>
+        </ol>
+        <figure class="sticky-figure"><img src="assets/04-settings-github.png" alt="Settings Comote dengan bagian Project Git remote" /><figcaption>Bagian <b>Project Git remote</b> mengikuti project yang sedang dipilih.</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="deploy-section" id="deploy">
+      <div class="section-heading light">
+        <div><p class="eyebrow">Preview &amp; production</p><h2>Lihat dulu, lalu deploy.</h2></div>
+        <p>Preview dan production memiliki fungsi yang berbeda.</p>
+      </div>
+      <div class="compare">
+        <article><div class="icon preview-icon">◉</div><p class="eyebrow">Private preview</p><h3>Untuk mengecek pekerjaan</h3><ul><li>Hanya dapat dibuka melalui Tailscale.</li><li>Menjalankan task/session yang sedang dipilih.</li><li>Hanya satu preview aktif pada satu waktu.</li><li>Cocok untuk mengecek tampilan sebelum merge.</li></ul><p><b>Tombol:</b> Start preview → Open preview → Stop</p></article>
+        <article><div class="icon production-icon">↗</div><p class="eyebrow">Production</p><h3>Untuk aplikasi yang dipakai</h3><ul><li>Berjalan di subdomain publik <code>nama.apps.devop.my.id</code>.</li><li>Mengambil canonical branch yang bersih.</li><li>Memiliki HTTPS dan release terpisah.</li><li>Dapat rollback ke release sebelumnya.</li></ul><p><b>Tombol:</b> Deploy production → Open production</p></article>
+      </div>
+      <div class="database-box">
+        <div><p class="eyebrow">Database cukup lewat prompt</p><h3>Anda tidak perlu memasang database secara manual.</h3><p>Minta Codex membuat <code>comote.deploy.json</code> sesuai kebutuhan. Comote sudah siap untuk SQLite, PostgreSQL, MySQL, dan Redis.</p></div>
+        <div class="db-options">
+          <div><strong>SQLite</strong><span>Paling ringan</span><p>Cocok untuk MVP, tool pribadi, dan traffic kecil.</p></div>
+          <div><strong>PostgreSQL</strong><span>Rekomendasi app serius</span><p>Cocok untuk banyak data, relasi, dan pengembangan jangka panjang.</p></div>
+          <div><strong>MySQL</strong><span>Kompatibel luas</span><p>Gunakan bila framework atau project Anda membutuhkannya.</p></div>
+          <div><strong>Redis</strong><span>Tambahan opsional</span><p>Untuk cache, queue, rate limit, atau session cepat.</p></div>
+        </div>
+        <div class="prompt-callout"><span>Contoh prompt</span><code>“Siapkan aplikasi ini untuk deploy di Comote. Gunakan SQLite, buat migration, persistent storage, dan health check.”</code></div>
+      </div>
+    </section>
+
+    <section id="mobile">
+      <div class="section-heading">
+        <div><p class="eyebrow">Di handphone</p><h2>Semua fitur penting tetap tersedia.</h2></div>
+        <p>Gunakan menu bawah untuk berpindah antara Projects, Chat, dan Changes.</p>
+      </div>
+      <div class="mobile-gallery">
+        <figure><img src="assets/05-mobile.png" alt="Tampilan utama Comote pada layar handphone" /><figcaption><b>Chat</b> — buat session dan bicara dengan Codex.</figcaption></figure>
+        <figure><img src="assets/06-mobile-changes.png" alt="Panel Changes Comote pada layar handphone" /><figcaption><b>Changes</b> — commit, push, preview, dan deploy.</figcaption></figure>
+        <div class="mobile-tips"><h3>Tips nyaman dari HP</h3><ul><li>Tambahkan Comote ke Home Screen agar terasa seperti aplikasi.</li><li>Gunakan prompt singkat, lalu tambah detail bila hasil belum sesuai.</li><li>Review diff kecil lebih mudah daripada menunggu perubahan terlalu besar.</li><li>Untuk pekerjaan panjang, biarkan Codex bekerja lalu kembali ke session yang sama.</li><li>Jangan menutup Tailscale bila ingin membuka Comote atau preview privat.</li></ul></div>
+      </div>
+    </section>
+
+    <section class="recipes">
+      <div class="section-heading light"><div><p class="eyebrow">Contoh sehari-hari</p><h2>Apa yang perlu saya tulis?</h2></div><p>Gunakan bahasa Indonesia atau Inggris. Jelaskan hasil yang diinginkan.</p></div>
+      <div class="recipe-grid">
+        <article><span>Bangun fitur</span><p>“Tambahkan login email dan password. Gunakan SQLite dulu, buat test, lalu beri saya ringkasan.”</p></article>
+        <article><span>Perbaiki masalah</span><p>“Tombol simpan tidak bekerja di HP. Cari penyebabnya, perbaiki, lalu test pada ukuran mobile.”</p></article>
+        <article><span>Audit</span><p>“Audit security dan reliability app ini. Perbaiki temuan yang aman, jalankan test, lalu rangkum hasilnya.”</p></article>
+        <article><span>Persiapan deploy</span><p>“Siapkan production config untuk Comote dengan PostgreSQL, migration, health check, dan SESSION_SECRET.”</p></article>
+        <article><span>Lanjut dari perangkat lain</span><p>“Baca pekerjaan terakhir di session ini dan lanjutkan bagian checkout yang belum selesai.”</p></article>
+        <article><span>Review sebelum merge</span><p>“Review semua perubahan task ini, jalankan test, dan beri tahu apakah sudah aman untuk di-merge.”</p></article>
+      </div>
+    </section>
+
+    <section id="bantuan">
+      <div class="section-heading"><div><p class="eyebrow">Bila ada kendala</p><h2>Checklist cepat</h2></div><p>Sebagian besar masalah dapat dikenali dari pesan yang muncul di UI.</p></div>
+      <div class="faq">
+        <details><summary>Comote tidak dapat dibuka</summary><p>Pastikan aplikasi Tailscale aktif dan perangkat login ke tailnet yang sama. Comote memang tidak dapat dibuka dari internet umum.</p></details>
+        <details><summary>Import repository gagal</summary><p>Periksa URL GitHub. Public repository harus dapat dibuka tanpa login. Untuk private repository, akses GitHub perlu dikonfigurasi pada VPS.</p></details>
+        <details><summary>Push gagal atau meminta login</summary><p>Repository tujuan belum memberikan akses tulis kepada SSH key/credential VPS, atau remote masih menggunakan metode autentikasi yang berbeda.</p></details>
+        <details><summary>Preview tidak mau berjalan</summary><p>Minta Codex memasang dependency dan memastikan <code>package.json</code> memiliki script <code>dev</code> atau <code>start</code>. Baca Preview logs untuk detail.</p></details>
+        <details><summary>Deploy production gagal</summary><p>Pastikan canonical branch bersih, dependency memiliki <code>package-lock.json</code>, required secret sudah disimpan, dan health check aplikasi berhasil.</p></details>
+        <details><summary>Ada conflict saat Merge</summary><p>Jangan memaksa merge. Kembali ke session task dan minta: “Selesaikan conflict dengan main, jalankan test, lalu commit hasilnya.”</p></details>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div><p class="eyebrow">Siap mulai?</p><h2>Buka Comote dan katakan apa yang ingin Anda buat.</h2><p>Mulai dari perubahan kecil, review hasilnya, lalu gunakan workflow commit → merge → push → deploy.</p></div>
+      <a class="button" href="https://comote-vps.tailb6b750.ts.net/">Buka Comote <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <footer><span>Comote Guide</span><span>Terakhir diperbarui: September 2026</span><a href="#atas">Kembali ke atas ↑</a></footer>
+  <script>
+    document.querySelectorAll('[data-copy]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const note = button.closest('.step').querySelector('.copy-note');
+        try {
+          await navigator.clipboard.writeText(button.dataset.copy);
+          note.textContent = 'Prompt disalin.';
+        } catch {
+          note.textContent = 'Pilih dan salin teks prompt secara manual.';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

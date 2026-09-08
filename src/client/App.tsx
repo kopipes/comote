@@ -292,6 +292,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
         <div className="topbar-meta">
           <span className="private-badge"><span className="status-dot" /> Private</span>
           <span className="device-name">{session.deviceName}</span>
+          <a className="icon-button" href="https://guide.apps.devop.my.id/" target="_blank" rel="noreferrer" title="Guide" aria-label="Open Comote guide">?</a>
           <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">⚙</button>
           <button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out">↗</button>
         </div>

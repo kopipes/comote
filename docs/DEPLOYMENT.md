@@ -5,6 +5,7 @@ This document records the active single-user deployment as of 2026-09-07. It int
 ## Access
 
 - Private URL: `https://comote-vps.tailb6b750.ts.net/`
+- Public user guide: `https://guide.apps.devop.my.id/`
 - The client device must be signed in to the same Tailscale network.
 - Comote then requires its own password and records the supplied device name in session and Git provenance.
 - The app is installable from the browser as a PWA on a phone or laptop.
@@ -16,6 +17,8 @@ Tailscale Serve terminates private HTTPS and proxies to Comote on `127.0.0.1:417
 The optional project preview route uses a second tailnet-only HTTPS listener on port `8443`, proxied by Tailscale Serve to `127.0.0.1:4180`. Only one preview is active at a time. The preview does not pass Comote or Codex secrets into the child process, and its port is not opened on public interfaces.
 
 Production applications use the wildcard `*.apps.devop.my.id`, whose DNS-only A record points to this VPS. Nginx binds only to the VPS private/NAT interface address `10.0.3.25` on public ports 80/443, so Tailscale continues listening on its own address on port 443. Application processes bind to loopback ports 5200–5299 and are not opened by UFW.
+
+The public Comote guide is served as static files from the active Comote release at `guide.apps.devop.my.id`. That Nginx virtual host exposes only `/opt/comote/current/guide`; the private Comote application and API remain available exclusively through Tailscale.
 
 ## Files and ownership
 
