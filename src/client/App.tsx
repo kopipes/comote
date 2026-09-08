@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
+import { applyTheme, readThemePreference, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
 
@@ -27,6 +28,16 @@ interface Approval {
 
 export default function App() {
   const [session, setSession] = useState<AuthState>(undefined);
+  const [theme, setTheme] = useState<ThemePreference>(readThemePreference);
+
+  useEffect(() => {
+    saveThemePreference(theme);
+    if (theme !== "system" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => applyTheme("system");
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [theme]);
 
   useEffect(() => {
     api.get<Session>("/api/session")
@@ -38,8 +49,8 @@ export default function App() {
   }, []);
 
   if (session === undefined) return <Splash />;
-  if (session === null) return <Login onAuthenticated={setSession} />;
-  return <Workspace session={session} onLoggedOut={() => setSession(null)} />;
+  if (session === null) return <Login theme={theme} onThemeChange={setTheme} onAuthenticated={setSession} />;
+  return <Workspace session={session} theme={theme} onThemeChange={setTheme} onLoggedOut={() => setSession(null)} />;
 }
 
 function Splash() {
@@ -51,7 +62,7 @@ function Splash() {
   );
 }
 
-function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
+function Login({ theme, onThemeChange, onAuthenticated }: { theme: ThemePreference; onThemeChange: (theme: ThemePreference) => void; onAuthenticated: (session: Session) => void }) {
   const [mode, setMode] = useState<"otp" | "password">("otp");
   const [otpConfig, setOtpConfig] = useState<{ otpEnabled: boolean } | null>(null);
   const [challengeId, setChallengeId] = useState("");
@@ -131,6 +142,7 @@ function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => voi
 
   return (
     <main className="login-shell">
+      <ThemeButton theme={theme} onThemeChange={onThemeChange} className="login-theme-button" />
       <section className="login-copy">
         <Brand large />
         <h1>Your development machine, wherever you are.</h1>
@@ -201,7 +213,7 @@ function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => voi
   );
 }
 
-function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: () => void }) {
+function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Session; theme: ThemePreference; onThemeChange: (theme: ThemePreference) => void; onLoggedOut: () => void }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -448,6 +460,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
           <span className="private-badge"><span className="status-dot" /> Private</span>
           <span className="device-name">{session.deviceName}</span>
           <a className="icon-button" href="https://guide.apps.devop.my.id/" target="_blank" rel="noreferrer" title="Guide" aria-label="Open Comote guide">?</a>
+          <ThemeButton theme={theme} onThemeChange={onThemeChange} />
           <button className="icon-button" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings">⚙</button>
           <button className="icon-button" onClick={logout} title="Sign out" aria-label="Sign out">↗</button>
         </div>
@@ -527,7 +540,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
       </nav>
 
       {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onCreated={projectAdded} />}
-      {settingsOpen && <SettingsDialog project={project} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDialog project={project} theme={theme} onThemeChange={onThemeChange} onClose={() => setSettingsOpen(false)} />}
       {managingSession && project && thread && (
         <SessionDialog
           project={project}
@@ -633,6 +646,15 @@ function Brand({ large = false }: { large?: boolean }) {
   return <div className={`brand ${large ? "large" : ""}`}><span className="brand-mark">C</span><span>comote</span></div>;
 }
 
+function ThemeButton({ theme, onThemeChange, className = "" }: { theme: ThemePreference; onThemeChange: (theme: ThemePreference) => void; className?: string }) {
+  const isLight = document.documentElement.dataset.theme === "light";
+  return (
+    <button className={`icon-button theme-button ${className}`.trim()} type="button" onClick={() => onThemeChange(isLight ? "dark" : "light")} title={isLight ? "Use dark theme" : "Use light theme"} aria-label={isLight ? "Use dark theme" : "Use light theme"}>
+      <span aria-hidden="true">{isLight ? "☾" : "☀"}</span>
+    </button>
+  );
+}
+
 function EmptyWorkspace({ hasProject, onNew, onAdd }: { hasProject: boolean; onNew: () => void; onAdd: () => void }) {
   return (
     <div className="empty-workspace">
@@ -712,7 +734,7 @@ function AddProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-function SettingsDialog({ project, onClose }: { project: Project | null; onClose: () => void }) {
+function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: Project | null; theme: ThemePreference; onThemeChange: (theme: ThemePreference) => void; onClose: () => void }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -786,9 +808,20 @@ function SettingsDialog({ project, onClose }: { project: Project | null; onClose
     }}>
       <section className="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div className="dialog-header">
-          <div><p className="eyebrow">Security</p><h2 id="settings-title">Settings</h2></div>
+          <div><p className="eyebrow">Preferences</p><h2 id="settings-title">Settings</h2></div>
           <button className="icon-button" type="button" onClick={onClose} disabled={busy} aria-label="Close">×</button>
         </div>
+        <section className="settings-form appearance-section" aria-labelledby="appearance-title">
+          <h3 id="appearance-title">Appearance</h3>
+          <p className="field-help">Light uses a warm neutral background instead of pure white.</p>
+          <div className="mode-tabs theme-tabs" role="group" aria-label="Color theme">
+            {(["system", "light", "dark"] as const).map((option) => (
+              <button key={option} type="button" className={theme === option ? "active" : ""} aria-pressed={theme === option} onClick={() => onThemeChange(option)}>
+                {option[0].toUpperCase() + option.slice(1)}
+              </button>
+            ))}
+          </div>
+        </section>
         <form className="settings-form" onSubmit={submit}>
           <h3>Change password</h3>
           <p className="field-help">Use at least 12 characters. Your current device stays signed in.</p>
