@@ -19,6 +19,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 install -d -m 711 /etc/comote/apps
 install -d -m 700 /etc/comote/secrets /etc/comote/resources /var/lib/comote-deploy
+chmod 711 /etc/comote /etc/comote/apps
 install -d -m 755 /srv/comote-apps /var/lib/letsencrypt
 install -m 644 "$script_dir/comote-deploy.socket" /etc/systemd/system/comote-deploy.socket
 install -m 644 "$script_dir/comote-deploy@.service" /etc/systemd/system/comote-deploy@.service

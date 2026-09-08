@@ -256,6 +256,7 @@ async function deploy(config: HelperConfig, request: DeployRequest): Promise<Rec
     const previousId = previousTarget ? path.basename(previousTarget) : "";
     await activateRelease(appRoot, releasePath);
     try {
+      await reconcileRedisService(request.slug, release.services, resources);
       await activateRuntime(config, request.slug, appUser, release);
       await installNginx(config, request.slug, domain, kind, port, staticRoot, true);
       activated = true;
@@ -268,6 +269,7 @@ async function deploy(config: HelperConfig, request: DeployRequest): Promise<Rec
           const oldManifest = await readDeployManifest(oldReleasePath);
           await activateRelease(appRoot, oldReleasePath);
           await writeRuntimeEnvironment(request.slug, appRoot, oldRelease.id, oldRelease.port, oldManifest, resources, secrets);
+          await reconcileRedisService(request.slug, oldRelease.services, resources);
           await activateRuntime(config, request.slug, appUser, oldRelease);
           const oldStaticRoot = oldRelease.kind === "static" ? await resolveStaticRoot(oldReleasePath, oldManifest.staticDir || "dist") : "";
           await installNginx(config, request.slug, domain, oldRelease.kind, oldRelease.port, oldStaticRoot, true);
@@ -322,6 +324,7 @@ async function rollback(config: HelperConfig, request: DeployRequest): Promise<R
   await writeRuntimeEnvironment(request.slug, appRoot, target.id, target.port, targetManifest, app.resources ?? {}, targetSecrets);
   await activateRelease(appRoot, releasePath);
   try {
+    await reconcileRedisService(request.slug, target.services, app.resources ?? {});
     await activateRuntime(config, request.slug, `comote-${request.slug}`, target);
     const targetStaticRoot = target.kind === "static" ? await resolveStaticRoot(releasePath, targetManifest.staticDir || "dist") : "";
     await installNginx(config, request.slug, app.domain, target.kind, target.port, targetStaticRoot, true);
@@ -332,6 +335,7 @@ async function rollback(config: HelperConfig, request: DeployRequest): Promise<R
       const currentManifest = await readDeployManifest(currentPath);
       await writeRuntimeEnvironment(request.slug, appRoot, current.id, current.port, currentManifest, app.resources ?? {}, targetSecrets);
       await activateRelease(appRoot, currentPath);
+      await reconcileRedisService(request.slug, current.services, app.resources ?? {});
       await activateRuntime(config, request.slug, `comote-${request.slug}`, current);
       const currentStaticRoot = current.kind === "static" ? await resolveStaticRoot(currentPath, currentManifest.staticDir || "dist") : "";
       await installNginx(config, request.slug, app.domain, current.kind, current.port, currentStaticRoot, true);
@@ -448,9 +452,22 @@ async function provisionResources(
     resources.redis = { port };
     await installRedisConfig(slug, appRoot, appUser, port, credentials.redisPassword);
     appendLog(`Private Redis service is ready on internal port ${port}.`);
+  } else if (resources.redis) {
+    await run("systemctl", ["disable", "--now", `comote-redis@${slug}.service`], true);
   }
   await writeInternalCredentials(slug, credentials);
   return resources;
+}
+
+async function reconcileRedisService(slug: string, services: DeployManifest["services"], resources: ResourceRecord): Promise<void> {
+  const unit = `comote-redis@${slug}.service`;
+  if (services.redis) {
+    if (!resources.redis) throw new Error("Redis resource metadata is missing.");
+    await run("systemctl", ["enable", "--now", unit]);
+    await waitForPort(resources.redis.port, 30_000);
+  } else {
+    await run("systemctl", ["disable", "--now", unit], true);
+  }
 }
 
 async function ensurePostgresDatabase(database: string, user: string, password: string): Promise<void> {
@@ -563,7 +580,7 @@ async function backupDatabasesBeforeMigration(slug: string, appRoot: string, man
     }
   }
   if (resources.postgres) {
-    const temporary = path.join("/var/lib/comote-deploy", `.postgres-${slug}-${process.pid}.dump`);
+    const temporary = path.join("/var/lib/postgresql", `.comote-${slug}-${process.pid}.dump`);
     await writeFile(temporary, "", { mode: 0o600 });
     const postgresPasswd = (await run("getent", ["passwd", "postgres"])).stdout.trim().split(":");
     await chown(temporary, Number(postgresPasswd[2]), Number(postgresPasswd[3]));
