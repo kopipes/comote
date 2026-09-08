@@ -1,5 +1,5 @@
 [Unit]
-Description=Comote production application %i
+Description=Comote private Redis for %i
 After=network-online.target
 Wants=network-online.target
 
@@ -7,15 +7,13 @@ Wants=network-online.target
 Type=simple
 User=comote-%i
 Group=comote-%i
-WorkingDirectory=/srv/comote-apps/%i/current
-EnvironmentFile=/etc/comote/apps/%i.env
-ExecStart=/usr/bin/node /usr/local/libexec/comote-app-runner.mjs %i
+ExecStart=/usr/bin/redis-server /etc/comote/apps/%i.redis.conf
 Restart=on-failure
 RestartSec=3
-TimeoutStopSec=15
+TimeoutStopSec=20
 
 NoNewPrivileges=true
-UMask=0027
+UMask=0077
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
@@ -33,7 +31,7 @@ RestrictSUIDSGID=true
 LockPersonality=true
 CapabilityBoundingSet=
 AmbientCapabilities=
-ReadWritePaths=/srv/comote-apps/%i/shared
+ReadWritePaths=/srv/comote-apps/%i/shared/redis
 
 [Install]
 WantedBy=multi-user.target

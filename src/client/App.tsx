@@ -632,6 +632,7 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [deployment, setDeployment] = useState<DeploymentState | null>(null);
   const [deploySlug, setDeploySlug] = useState("");
+  const [secretDraft, setSecretDraft] = useState("");
   const changedFiles = useMemo(() => git?.status.split("\n").filter(Boolean) ?? [], [git?.status]);
 
   const refreshPreview = useCallback(async () => {
@@ -668,6 +669,7 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
   useEffect(() => {
     setDeployment(null);
     setDeploySlug(project ? slugify(project.name) : "");
+    setSecretDraft("");
     void refreshDeployment();
   }, [project?.id, refreshDeployment]);
 
@@ -771,6 +773,32 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
     }
   }
 
+  async function saveProductionSecrets() {
+    if (!project || !deploySlug || !secretDraft.trim()) return;
+    setBusy(true);
+    try {
+      const secrets = parseSecretDraft(secretDraft);
+      setDeployment(await api.post<DeploymentState>(`/api/projects/${project.id}/deployment/secrets`, { slug: deploySlug, secrets, removeSecrets: [] }));
+      setSecretDraft("");
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeProductionSecret(name: string) {
+    if (!project || !deployment?.slug || !window.confirm(`Remove production secret ${name}?`)) return;
+    setBusy(true);
+    try {
+      setDeployment(await api.post<DeploymentState>(`/api/projects/${project.id}/deployment/secrets`, { slug: deployment.slug, secrets: {}, removeSecrets: [name] }));
+    } catch (cause) {
+      onError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function rollbackProduction() {
     if (!project || !deployment?.previousRelease || !window.confirm(`Roll back ${deployment.domain} to its previous release?`)) return;
     setBusy(true);
@@ -822,7 +850,21 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
               <>
                 <label>Subdomain<input value={deploySlug} onChange={(event) => setDeploySlug(slugify(event.target.value))} maxLength={24} placeholder="my-app" disabled={Boolean(deployment.release)} /></label>
                 <p>{deploySlug || "name"}.{deployment.domainSuffix} · deploys the clean canonical branch</p>
-                <button className="primary full" onClick={deployProduction} disabled={busy || !deploySlug || deployment.phase === "deploying" || deployment.phase === "rolling_back"}>
+                <div className="deployment-capabilities">
+                  {activeServices(deployment).map((service) => <span key={service}>{service}</span>)}
+                  {!activeServices(deployment).length && <span>no managed database</span>}
+                </div>
+                {!deployment.manifestConfigured && <p>Basic auto-detection is active. Ask Codex to configure SQLite, PostgreSQL, MySQL, Redis, migrations, or health checks.</p>}
+                {deployment.configurationError && <p className="deployment-warning">Configuration error: {deployment.configurationError}</p>}
+                <details className="deployment-settings" open={Boolean(deployment.missingSecrets.length)}>
+                  <summary>Environment secrets</summary>
+                  <p>Values are write-only. Add one <code>NAME=value</code> per line.</p>
+                  <textarea rows={3} value={secretDraft} onChange={(event) => setSecretDraft(event.target.value)} placeholder="SESSION_SECRET=…" autoComplete="off" spellCheck={false} />
+                  <button className="secondary full" onClick={saveProductionSecrets} disabled={busy || !secretDraft.trim() || !deploySlug}>Save secrets</button>
+                  {deployment.secretNames.length > 0 && <div className="secret-list">{deployment.secretNames.map((name) => <button type="button" key={name} onClick={() => removeProductionSecret(name)} title="Remove secret">{name} ×</button>)}</div>}
+                  {deployment.missingSecrets.length > 0 && <p className="deployment-warning">Required before deploy: {deployment.missingSecrets.join(", ")}</p>}
+                </details>
+                <button className="primary full" onClick={deployProduction} disabled={busy || !deploySlug || Boolean(deployment.configurationError) || deployment.missingSecrets.length > 0 || deployment.phase === "deploying" || deployment.phase === "rolling_back"}>
                   {deployment.phase === "deploying" ? "Deploying…" : deployment.phase === "rolling_back" ? "Rolling back…" : "Deploy production"}
                 </button>
                 {deployment.release && <a className="secondary full production-link" href={deployment.url} target="_blank" rel="noreferrer">Open production</a>}
@@ -849,6 +891,25 @@ function deploymentLabel(deployment: DeploymentState | null): string {
 
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24).replace(/-+$/g, "");
+}
+
+function activeServices(deployment: DeploymentState): string[] {
+  return Object.entries(deployment.services).filter(([, enabled]) => enabled).map(([name]) => name);
+}
+
+function parseSecretDraft(value: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const rawLine of value.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const separator = line.indexOf("=");
+    if (separator < 1) throw new Error(`Secret line must use NAME=value: ${line}`);
+    const name = line.slice(0, separator).trim();
+    const secret = line.slice(separator + 1);
+    if (!/^[A-Z_][A-Z0-9_]{0,63}$/.test(name) || !secret) throw new Error(`Invalid production secret: ${name || line}`);
+    result[name] = secret;
+  }
+  return result;
 }
 
 function EmptySmall({ text }: { text: string }) {

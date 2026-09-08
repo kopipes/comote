@@ -2,6 +2,7 @@ import net from "node:net";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Project } from "./projects.js";
+import { readDeployManifest, validateSecretInput, validateSecretNames } from "./deploy-manifest.js";
 
 export type DeploymentPhase = "idle" | "deploying" | "deployed" | "rolling_back" | "failed";
 
@@ -16,15 +17,23 @@ export interface DeploymentStatus {
   release: string;
   previousRelease: string;
   kind: "" | "static" | "node";
+  manifestConfigured: boolean;
+  configurationError: string;
+  services: { sqlite: boolean; postgres: boolean; mysql: boolean; redis: boolean };
+  requiredSecrets: string[];
+  secretNames: string[];
+  missingSecrets: string[];
   logs: string;
   updatedAt: string;
 }
 
 interface BrokerRequest {
-  action: "deploy" | "rollback";
+  action: "deploy" | "rollback" | "configure";
   projectName: string;
   sourcePath: string;
   slug: string;
+  secrets?: Record<string, string>;
+  removeSecrets?: string[];
 }
 
 interface BrokerResponse {
@@ -33,6 +42,9 @@ interface BrokerResponse {
   release?: string;
   previousRelease?: string;
   kind?: "static" | "node";
+  secretNames?: string[];
+  services?: DeploymentStatus["services"];
+  requiredSecrets?: string[];
   logs?: string;
 }
 
@@ -59,9 +71,10 @@ export class DeploymentManager {
     await mkdir(path.dirname(this.statePath), { recursive: true, mode: 0o700 });
     const saved = await readFile(this.statePath, "utf8").then((value) => JSON.parse(value) as Record<string, DeploymentStatus>).catch(() => ({}));
     for (const [projectId, state] of Object.entries(saved)) {
+      const normalized = { ...emptyStatus(Boolean(this.domainSuffix), this.domainSuffix), ...state };
       this.states.set(projectId, state.phase === "deploying" || state.phase === "rolling_back"
-        ? { ...state, phase: "failed", logs: `${state.logs}\nDeployment was interrupted by a Comote restart.`.trim(), updatedAt: new Date().toISOString() }
-        : state);
+        ? { ...normalized, phase: "failed", logs: `${state.logs}\nDeployment was interrupted by a Comote restart.`.trim(), updatedAt: new Date().toISOString() }
+        : normalized);
     }
   }
 
@@ -72,6 +85,60 @@ export class DeploymentManager {
     const existing = this.states.get(project.id);
     if (existing) return { ...existing, enabled: Boolean(this.domainSuffix), domainSuffix: this.domainSuffix };
     return emptyStatus(Boolean(this.domainSuffix), this.domainSuffix);
+  }
+
+  async describe(project: Project): Promise<DeploymentStatus> {
+    const state = this.status(project);
+    if (!state.enabled) return state;
+    try {
+      const manifest = await readDeployManifest(project.path);
+      const requiredSecrets = manifest.requiredSecrets;
+      return {
+        ...state,
+        manifestConfigured: manifest.configured,
+        configurationError: "",
+        services: manifest.services,
+        requiredSecrets,
+        missingSecrets: requiredSecrets.filter((name) => !state.secretNames.includes(name)),
+      };
+    } catch (cause) {
+      return { ...state, manifestConfigured: true, configurationError: (cause as Error).message };
+    }
+  }
+
+  async configure(project: Project, slugInput: string, secretInput: unknown, removeInput: unknown): Promise<DeploymentStatus> {
+    this.assertEnabled();
+    this.assertPublishable(project);
+    const slug = validateDeploymentSlug(slugInput);
+    this.assertIdle(project.id);
+    const existing = this.states.get(project.id);
+    if (existing?.release && existing.slug !== slug) throw new Error("This project already uses a different production name.");
+    const result = await this.brokerCall({
+      action: "configure",
+      projectName: project.name,
+      sourcePath: project.path,
+      slug,
+      secrets: validateSecretInput(secretInput ?? {}),
+      removeSecrets: validateSecretNames(removeInput ?? []),
+    });
+    if (!result.ok) throw new Error([result.error || "Deployment broker rejected the request.", result.logs].filter(Boolean).join("\n"));
+    const domain = `${slug}.${this.domainSuffix}`;
+    const state: DeploymentStatus = {
+      ...emptyStatus(true, this.domainSuffix),
+      ...existing,
+      slug,
+      domain,
+      url: `https://${domain}`,
+      secretNames: result.secretNames ?? existing?.secretNames ?? [],
+      services: result.services ?? existing?.services ?? emptyServices(),
+      requiredSecrets: result.requiredSecrets ?? existing?.requiredSecrets ?? [],
+      missingSecrets: (result.requiredSecrets ?? existing?.requiredSecrets ?? []).filter((name) => !(result.secretNames ?? []).includes(name)),
+      logs: result.logs || existing?.logs || "Production secrets updated.",
+      updatedAt: new Date().toISOString(),
+    };
+    this.states.set(project.id, state);
+    await this.persist();
+    return this.describe(project);
   }
 
   start(project: Project, slugInput: string): DeploymentStatus {
@@ -143,6 +210,10 @@ export class DeploymentManager {
         release: result.release ?? pending.release,
         previousRelease: result.previousRelease ?? "",
         kind: result.kind ?? pending.kind,
+        secretNames: result.secretNames ?? pending.secretNames,
+        services: result.services ?? pending.services,
+        requiredSecrets: result.requiredSecrets ?? pending.requiredSecrets,
+        missingSecrets: (result.requiredSecrets ?? pending.requiredSecrets).filter((name) => !(result.secretNames ?? pending.secretNames).includes(name)),
         logs: result.logs ?? "Deployment completed.",
         updatedAt: new Date().toISOString(),
       });
@@ -203,9 +274,19 @@ function emptyStatus(enabled: boolean, domainSuffix: string): DeploymentStatus {
     release: "",
     previousRelease: "",
     kind: "",
+    manifestConfigured: false,
+    configurationError: "",
+    services: emptyServices(),
+    requiredSecrets: [],
+    secretNames: [],
+    missingSecrets: [],
     logs: "",
     updatedAt: "",
   };
+}
+
+function emptyServices(): DeploymentStatus["services"] {
+  return { sqlite: false, postgres: false, mysql: false, redis: false };
 }
 
 function requestBroker(socketPath: string, request: BrokerRequest): Promise<BrokerResponse> {
@@ -214,8 +295,8 @@ function requestBroker(socketPath: string, request: BrokerRequest): Promise<Brok
     let output = "";
     const timer = setTimeout(() => {
       socket.destroy();
-      reject(new Error("Deployment timed out after 15 minutes."));
-    }, 15 * 60_000);
+      reject(new Error("Deployment timed out after 30 minutes."));
+    }, 30 * 60_000);
     socket.setEncoding("utf8");
     socket.on("connect", () => socket.end(`${JSON.stringify(request)}\n`));
     socket.on("data", (chunk) => {

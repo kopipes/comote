@@ -31,6 +31,9 @@ Production applications use the wildcard `*.apps.devop.my.id`, whose DNS-only A 
 - Production releases: `/srv/comote-apps/<slug>/releases`
 - Production metadata: `/var/lib/comote-deploy/apps.json`
 - Production app environment: `/etc/comote/apps/<slug>.env`
+- Write-only project secrets: `/etc/comote/secrets/<slug>.json`
+- Generated database credentials: `/etc/comote/resources/<slug>.json`
+- Persistent app data: `/srv/comote-apps/<slug>/shared`
 - Root-only local backups: `/var/backups/comote` (14-day retention)
 
 The service runs as the locked, non-sudo `coder` account. Its systemd sandbox grants write access only to the Comote state, Codex state, and project workspace paths.
@@ -61,7 +64,7 @@ Rollback by repointing the release symlink to a known-good release, then restart
 
 The Changes pane can deploy a clean canonical branch to `<slug>.apps.devop.my.id`. Source is exported with `git archive`, dependencies are installed from `package-lock.json`, and project build scripts execute as a locked per-app Linux user rather than root or `coder`. Static `dist/` builds are served directly by Nginx; projects with an npm `start` script run through `comote-app@<slug>.service`. Let’s Encrypt certificates are requested through an HTTP webroot challenge and renewed by the system timer.
 
-Comote itself is explicitly excluded from public deployment. A project keeps the same slug after its first successful deployment. Up to four recent immutable releases are retained; the UI exposes rollback when a previous release exists. If a new Node release fails to listen on its allocated port, the broker restores the previous release automatically.
+Comote itself is explicitly excluded from public deployment. A project keeps the same slug after its first successful deployment. Up to four recent immutable releases are retained; the UI exposes rollback when a previous release exists. A project manifest can request SQLite, PostgreSQL, MySQL, Redis, migrations, secrets, and an HTTP health path. If a new Node release fails its port or HTTP health check, the broker restores the previous application release automatically. Persistent data and databases are never deleted by release pruning or application rollback.
 
 Useful checks:
 

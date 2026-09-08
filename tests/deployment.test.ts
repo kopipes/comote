@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { renderNginxConfig } from "../src/server/deploy-helper.js";
 import { DeploymentManager, validateDeploymentSlug } from "../src/server/deployment.js";
+import { readDeployManifest, validateSecretInput } from "../src/server/deploy-manifest.js";
 import type { Project } from "../src/server/projects.js";
 
 test("deployment names are normalized and cannot escape a subdomain", () => {
@@ -72,6 +73,46 @@ test("the Comote workspace cannot be published through its own deployment broker
   assert.equal(manager.status(project).enabled, false);
   assert.match(manager.status(project).disabledReason, /stays private/);
   assert.throws(() => manager.start(project, "comote"), /stays private/);
+});
+
+test("deployment manifest configures SQLite, migrations, health checks, and required secrets", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-manifest-"));
+  await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { start: "node server.js", build: "vite build" } }));
+  await writeFile(path.join(root, "comote.deploy.json"), JSON.stringify({
+    version: 1,
+    runtime: "node",
+    start: ["node", "server.js"],
+    migrate: ["node", "migrate.js"],
+    healthPath: "/health",
+    healthTimeoutSeconds: 90,
+    services: { sqlite: true, redis: true },
+    requiredSecrets: ["SESSION_SECRET"],
+    env: { PUBLIC_NAME: "Demo" },
+  }));
+  const manifest = await readDeployManifest(root);
+  assert.equal(manifest.configured, true);
+  assert.equal(manifest.services.sqlite, true);
+  assert.equal(manifest.services.redis, true);
+  assert.deepEqual(manifest.migrate, ["node", "migrate.js"]);
+  assert.equal(manifest.healthPath, "/health");
+  assert.deepEqual(manifest.requiredSecrets, ["SESSION_SECRET"]);
+});
+
+test("deployment manifest permits only one primary managed database", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-manifest-database-"));
+  await writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { start: "node server.js" } }));
+  await writeFile(path.join(root, "comote.deploy.json"), JSON.stringify({
+    version: 1,
+    start: ["node", "server.js"],
+    services: { postgres: true, mysql: true },
+  }));
+  await assert.rejects(() => readDeployManifest(root), /Choose only one primary database/);
+});
+
+test("production secret validation rejects reserved and multiline environment values", () => {
+  assert.deepEqual(validateSecretInput({ SESSION_SECRET: "strong-value" }), { SESSION_SECRET: "strong-value" });
+  assert.throws(() => validateSecretInput({ DATABASE_URL: "override" }), /managed by Comote/);
+  assert.throws(() => validateSecretInput({ API_TOKEN: "line1\nline2" }), /single-line/);
 });
 
 async function waitFor(predicate: () => boolean): Promise<void> {

@@ -11,7 +11,7 @@ ExecStart=/usr/bin/flock --exclusive /run/lock/comote-maintenance.lock /usr/bin/
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal
-TimeoutStartSec=15min
+TimeoutStartSec=30min
 
 UMask=0027
 PrivateTmp=true

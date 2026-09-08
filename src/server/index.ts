@@ -300,7 +300,13 @@ app.post("/api/projects/:projectId/preview/stop", requireCsrf, async (request, r
 
 app.get("/api/projects/:projectId/deployment", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  response.json(deployments.status(project));
+  response.json(await deployments.describe(project));
+});
+
+app.post("/api/projects/:projectId/deployment/secrets", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const slug = typeof request.body?.slug === "string" ? request.body.slug : "";
+  response.json(await deployments.configure(project, slug, request.body?.secrets, request.body?.removeSecrets));
 });
 
 app.post("/api/projects/:projectId/deployment/start", requireCsrf, async (request, response) => {
@@ -347,6 +353,7 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
                   : message.startsWith("Git operation failed") ? 502
                     : message.startsWith("Production deployment is not configured") ? 503
                       : message.startsWith("A deployment is already in progress") ? 409
+                        : message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs") ? 400
                     : 500;
   response.status(status).json({ error: message });
 });

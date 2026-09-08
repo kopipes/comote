@@ -64,6 +64,12 @@ export interface DeploymentState {
   release: string;
   previousRelease: string;
   kind: "" | "static" | "node";
+  manifestConfigured: boolean;
+  configurationError: string;
+  services: { sqlite: boolean; postgres: boolean; mysql: boolean; redis: boolean };
+  requiredSecrets: string[];
+  secretNames: string[];
+  missingSecrets: string[];
   logs: string;
   updatedAt: string;
 }

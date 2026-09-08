@@ -17,11 +17,15 @@ esac
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-install -d -m 700 /etc/comote/apps /var/lib/comote-deploy
+install -d -m 711 /etc/comote/apps
+install -d -m 700 /etc/comote/secrets /etc/comote/resources /var/lib/comote-deploy
 install -d -m 755 /srv/comote-apps /var/lib/letsencrypt
 install -m 644 "$script_dir/comote-deploy.socket" /etc/systemd/system/comote-deploy.socket
 install -m 644 "$script_dir/comote-deploy@.service" /etc/systemd/system/comote-deploy@.service
 install -m 644 "$script_dir/comote-app@.service" /etc/systemd/system/comote-app@.service
+install -m 644 "$script_dir/comote-redis@.service" /etc/systemd/system/comote-redis@.service
+install -d -m 755 /usr/local/libexec
+install -m 755 "$script_dir/comote-app-runner.mjs" /usr/local/libexec/comote-app-runner.mjs
 install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
 install -m 755 "$script_dir/reload-nginx-after-cert-renewal" /etc/letsencrypt/renewal-hooks/deploy/reload-nginx
 
