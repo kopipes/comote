@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
-import { applyTheme, readThemePreference, saveThemePreference, type ThemePreference } from "./theme";
+import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
 
@@ -647,7 +647,18 @@ function Brand({ large = false }: { large?: boolean }) {
 }
 
 function ThemeButton({ theme, onThemeChange, className = "" }: { theme: ThemePreference; onThemeChange: (theme: ThemePreference) => void; className?: string }) {
-  const isLight = document.documentElement.dataset.theme === "light";
+  const [prefersDark, setPrefersDark] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setPrefersDark(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  const isLight = resolveTheme(theme, prefersDark) === "light";
   return (
     <button className={`icon-button theme-button ${className}`.trim()} type="button" onClick={() => onThemeChange(isLight ? "dark" : "light")} title={isLight ? "Use dark theme" : "Use light theme"} aria-label={isLight ? "Use dark theme" : "Use light theme"}>
       <span aria-hidden="true">{isLight ? "☾" : "☀"}</span>
