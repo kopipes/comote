@@ -53,7 +53,7 @@ function Splash() {
 
 function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
   const [mode, setMode] = useState<"otp" | "password">("otp");
-  const [otpConfig, setOtpConfig] = useState<{ otpEnabled: boolean; destination: string } | null>(null);
+  const [otpConfig, setOtpConfig] = useState<{ otpEnabled: boolean } | null>(null);
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -64,13 +64,13 @@ function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => voi
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.get<{ otpEnabled: boolean; destination: string }>("/api/login/config")
+    api.get<{ otpEnabled: boolean }>("/api/login/config")
       .then((config) => {
         setOtpConfig(config);
         if (!config.otpEnabled) setMode("password");
       })
       .catch(() => {
-        setOtpConfig({ otpEnabled: false, destination: "" });
+        setOtpConfig({ otpEnabled: false });
         setMode("password");
       });
   }, []);
@@ -147,8 +147,8 @@ function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => voi
         <p className="muted">{mode === "password"
           ? "Use the existing Comote password. Ping will notify you after a successful login."
           : challengeId
-            ? `We sent a one-time code to ${otpConfig?.destination || "your Ping account"}.`
-            : `Receive a one-time code in Ping${otpConfig?.destination ? ` at ${otpConfig.destination}` : ""}.`}</p>
+            ? "We sent a one-time code to Ping."
+            : "Receive a one-time code in Ping!"}</p>
 
         {mode === "otp" && !challengeId && (
           <form onSubmit={requestOtp}>

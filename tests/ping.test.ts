@@ -15,7 +15,6 @@ test("Ping sends an OTP only to the configured user without exposing its token i
   await client.sendOtp("123456", "Phone <unsafe>");
 
   assert.equal(client.enabled, true);
-  assert.equal(client.maskedDestination, "bo••@example.com");
   assert.equal(requestedUrl, "https://chat.example/api/webhook/notify");
   assert.equal(new Headers(requestedInit?.headers).get("authorization"), "Bearer test-secret");
   const payload = JSON.parse(String(requestedInit?.body));

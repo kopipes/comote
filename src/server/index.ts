@@ -66,7 +66,7 @@ app.get("/api/health", (_request, response) => {
 });
 
 app.get("/api/login/config", (_request, response) => {
-  response.json({ otpEnabled: ping.enabled, destination: ping.enabled ? ping.maskedDestination : "" });
+  response.json({ otpEnabled: ping.enabled });
 });
 
 app.post("/api/login/otp/request", async (request, response) => {

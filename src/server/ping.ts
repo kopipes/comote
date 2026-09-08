@@ -19,12 +19,6 @@ export class PingClient {
     return Boolean(this.webhookToken && this.userEmail);
   }
 
-  get maskedDestination(): string {
-    const [local, domain] = this.userEmail.split("@");
-    if (!local || !domain) return "your Ping account";
-    return `${local.slice(0, 2)}${"•".repeat(Math.max(2, Math.min(6, local.length - 2)))}@${domain}`;
-  }
-
   async sendOtp(code: string, deviceName: string): Promise<void> {
     await this.notify({
       userEmail: this.userEmail,
