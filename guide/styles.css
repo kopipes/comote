@@ -19,6 +19,7 @@ html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.65; }
 a { color: inherit; }
 img { display: block; max-width: 100%; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 code { color: var(--mint); background: #08120f; border: 1px solid var(--line); border-radius: 6px; padding: .12rem .35rem; overflow-wrap: anywhere; }
 .skip-link { position: fixed; z-index: 100; top: -60px; left: 16px; padding: 10px 16px; background: var(--mint); color: #07100d; border-radius: 8px; }
 .skip-link:focus { top: 12px; }
@@ -29,6 +30,9 @@ code { color: var(--mint); background: #08120f; border: 1px solid var(--line); b
 .site-header nav { display: flex; gap: 24px; margin-right: auto; }
 .site-header nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
 .site-header nav a:hover { color: var(--mint); }
+.theme-picker { flex: 0 0 auto; }
+.theme-picker select { min-height: 38px; padding: 0 30px 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: 700 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: pointer; }
+.theme-picker select:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border: 1px solid var(--mint); border-radius: 11px; background: var(--mint); color: #06130e; font-weight: 750; text-decoration: none; box-shadow: 0 12px 32px rgba(84,221,156,.12); }
 .button:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .button.compact { min-height: 38px; padding: 0 15px; font-size: 13px; }
@@ -130,6 +134,49 @@ figcaption { margin-top: 11px; color: var(--muted); font-size: 13px; }
 footer { min-height: 84px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px max(24px, calc((100vw - var(--max)) / 2)); border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 footer span:first-child { color: var(--ink); font-weight: 800; }
 
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F7F6F3;
+  --surface: #EEEDE8;
+  --surface-2: #E5EAE4;
+  --line: #CBD1CA;
+  --ink: #252925;
+  --muted: #676E69;
+  --mint: #246C50;
+  --mint-dark: #E1EEE7;
+  --orange: #825414;
+}
+
+html[data-theme="light"] .site-header { background: rgba(247,246,243,.9); border-bottom-color: rgba(36,108,80,.18); }
+html[data-theme="light"] .brand > span { border-color: #9AB2A4; background: #E1EAE4; }
+html[data-theme="light"] .button { color: #F7F6F3; box-shadow: 0 12px 32px rgba(36,108,80,.14); }
+html[data-theme="light"] .button.ghost { color: var(--ink); }
+html[data-theme="light"] code,
+html[data-theme="light"] .prompt-list button { background: #E8ECE7; color: #35443B; }
+html[data-theme="light"] .lead { color: #4F5752; }
+html[data-theme="light"] .hero::before { background: rgba(36,108,80,.1); }
+html[data-theme="light"] .hero-card { background: radial-gradient(circle at 50% 48%, #D7E5DC 0, var(--surface) 48%, #F1F0EC 100%); box-shadow: 0 40px 100px rgba(45,55,48,.14); }
+html[data-theme="light"] .mini-device span { border-color: #75867D; }
+html[data-theme="light"] .mini-device span::after { background: #75867D; }
+html[data-theme="light"] .mini-vps > span { border-color: #8FA99B; background: #DDE9E1; }
+html[data-theme="light"] .github-pill { background: #E8EBE7; }
+html[data-theme="light"] .step-number { border-color: #88A294; }
+html[data-theme="light"] .tip { background: rgba(36,108,80,.07); }
+html[data-theme="light"] .warning { background: rgba(130,84,20,.08); }
+html[data-theme="light"] figure img { border-color: #AEBBB3; box-shadow: 0 24px 60px rgba(45,55,48,.16); }
+html[data-theme="light"] .workflow-section,
+html[data-theme="light"] .deploy-section,
+html[data-theme="light"] .recipes { background: #EFEDE8; }
+html[data-theme="light"] .workflow > div,
+html[data-theme="light"] .explain-card,
+html[data-theme="light"] .compare article,
+html[data-theme="light"] .recipe-grid article { background: #F7F6F3; }
+html[data-theme="light"] .workflow > i { color: #7C8A82; }
+html[data-theme="light"] .database-box { border-color: #9BAFA3; background: linear-gradient(140deg, #E0EAE3, #F0EEE9); }
+html[data-theme="light"] .db-options > div { background: rgba(247,246,243,.72); }
+html[data-theme="light"] .recipe-grid p { color: #505853; }
+html[data-theme="light"] .final-cta { border-color: #9AAFA2; background: linear-gradient(130deg, #DDE9E1, #F1EFEA); }
+
 @media (max-width: 980px) {
   .site-header nav { display: none; }
   .site-header .brand { margin-right: auto; }
@@ -146,8 +193,9 @@ footer span:first-child { color: var(--ink); font-weight: 800; }
 }
 
 @media (max-width: 640px) {
-  .site-header { height: 62px; padding-inline: 14px; }
+  .site-header { height: 62px; gap: 8px; padding-inline: 14px; }
   .brand small { display: none; }
+  .theme-picker select { width: 88px; padding-inline: 9px 26px; font-size: 11px; }
   .button.compact { width: 38px; padding: 0; font-size: 0; }
   .button.compact span { font-size: 16px; }
   main > section { width: min(100% - 28px, var(--max)); padding: 72px 0; }

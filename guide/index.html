@@ -6,6 +6,20 @@
   <meta name="description" content="Panduan lengkap menggunakan Comote untuk coding dengan Codex dari laptop atau handphone." />
   <meta name="theme-color" content="#07100d" />
   <title>Panduan Comote — Coding dari mana saja</title>
+  <script>
+    (() => {
+      try {
+        const preference = localStorage.getItem("comote-guide-theme") || "system";
+        const resolved = preference === "system"
+          ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          : preference;
+        document.documentElement.dataset.theme = resolved === "light" ? "light" : "dark";
+        document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -18,6 +32,14 @@
       <a href="#deploy">Deploy</a>
       <a href="#bantuan">Bantuan</a>
     </nav>
+    <label class="theme-picker">
+      <span class="sr-only">Tema panduan</span>
+      <select id="theme-preference" aria-label="Tema panduan">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
     <a class="button compact" href="https://comote-vps.tailb6b750.ts.net/">Buka Comote <span aria-hidden="true">↗</span></a>
   </header>
 
