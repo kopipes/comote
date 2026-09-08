@@ -10,7 +10,7 @@ Comote is a private, single-user PWA for continuing the same VPS-hosted developm
 - Passwords use Node's built-in scrypt and only the derived hash is stored.
 - Changing the password from Settings keeps the current device signed in and revokes every other Comote session.
 - Login attempts are rate-limited.
-- Codex App Server is spawned lazily over stdio and never receives a public listener.
+- Codex App Server is spawned lazily over stdio, never receives a public listener, and does not inherit Comote's private environment variables.
 - Projects are restricted to direct Git workspaces under `COMOTE_PROJECTS_ROOT`.
 - The systemd service runs as the unprivileged `coder` user with no Linux capabilities and a read-only system/home view except for explicit Comote paths.
 - Production deployment crosses the privilege boundary through a root-owned Unix socket broker. The broker accepts only validated local project, subdomain, deploy, and rollback requests; each production app builds and runs under its own locked Linux user.

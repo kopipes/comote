@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { renderNginxConfig } from "../src/server/deploy-helper.js";
+import { parseDeployState, renderNginxConfig } from "../src/server/deploy-helper.js";
 import { DeploymentManager, validateDeploymentSlug } from "../src/server/deployment.js";
 import { readDeployManifest, validateSecretInput } from "../src/server/deploy-manifest.js";
 import type { Project } from "../src/server/projects.js";
@@ -54,6 +54,16 @@ test("deployment manager records deploys and rollbacks without blocking the API"
   assert.equal(manager.rollback(project).phase, "rolling_back");
   await waitFor(() => manager.status(project).release === "r1");
   assert.equal(manager.status(project).previousRelease, "r2");
+});
+
+test("deployment state corruption fails closed instead of erasing app mappings", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "comote-deployment-corrupt-"));
+  await writeFile(path.join(dataDir, "deployments.json"), "{not-json");
+  const manager = new DeploymentManager(dataDir, "apps.example.com", "/unused");
+  await assert.rejects(() => manager.init(), /state is corrupt/);
+  assert.throws(() => parseDeployState("[]", 5200, 5299), /state is invalid/);
+  assert.throws(() => parseDeployState("{broken", 5200, 5299), /state is corrupt/);
+  assert.deepEqual(parseDeployState('{"nextPort":9999,"apps":{}}', 5200, 5299), { nextPort: 5200, apps: {} });
 });
 
 test("deployment remains disabled when no production domain is configured", async () => {

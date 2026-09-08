@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import { withoutComoteEnvironment } from "./child-environment.js";
 import type { ComoteConfig } from "./config.js";
 import { EventHub } from "./event-hub.js";
 
@@ -129,7 +130,7 @@ export class CodexClient {
     this.starting = new Promise<void>((resolve, reject) => {
       const child = spawn(this.config.codexBin, ["app-server"], {
         cwd: this.config.projectsRoot,
-        env: process.env,
+        env: createCodexEnvironment(process.env),
         stdio: ["pipe", "pipe", "pipe"],
       });
       this.process = child;
@@ -275,6 +276,10 @@ export class CodexClient {
     }
     this.pending.clear();
   }
+}
+
+export function createCodexEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return withoutComoteEnvironment(environment);
 }
 
 export function buildApprovalResponse(

@@ -69,7 +69,11 @@ export class DeploymentManager {
 
   async init(): Promise<void> {
     await mkdir(path.dirname(this.statePath), { recursive: true, mode: 0o700 });
-    const saved = await readFile(this.statePath, "utf8").then((value) => JSON.parse(value) as Record<string, DeploymentStatus>).catch(() => ({}));
+    const content = await readFile(this.statePath, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    const saved = content ? parseDeploymentStates(content) : {};
     for (const [projectId, state] of Object.entries(saved)) {
       const normalized = { ...emptyStatus(Boolean(this.domainSuffix), this.domainSuffix), ...state };
       this.states.set(projectId, state.phase === "deploying" || state.phase === "rolling_back"
@@ -164,7 +168,7 @@ export class DeploymentManager {
     };
     this.states.set(project.id, state);
     this.activeProjects.add(project.id);
-    void this.persist();
+    void this.persist().catch((error) => console.error("Could not persist queued deployment state.", error));
     void this.finish(project, state, {
       action: "deploy",
       projectName: project.name,
@@ -188,7 +192,7 @@ export class DeploymentManager {
     };
     this.states.set(project.id, state);
     this.activeProjects.add(project.id);
-    void this.persist();
+    void this.persist().catch((error) => console.error("Could not persist queued rollback state.", error));
     void this.finish(project, state, {
       action: "rollback",
       projectName: project.name,
@@ -252,6 +256,19 @@ export class DeploymentManager {
     this.persistQueue = this.persistQueue.then(save, save);
     await this.persistQueue;
   }
+}
+
+function parseDeploymentStates(content: string): Record<string, DeploymentStatus> {
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new Error("Deployment state is corrupt; refusing to start with an empty state.");
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Deployment state is invalid; refusing to start with an empty state.");
+  }
+  return value as Record<string, DeploymentStatus>;
 }
 
 export function validateDeploymentSlug(value: string): string {

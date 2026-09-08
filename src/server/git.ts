@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { withoutComoteEnvironment } from "./child-environment.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -7,7 +8,7 @@ async function git(cwd: string, args: string[], extraEnvironment: NodeJS.Process
   const result = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout: 60_000,
     maxBuffer: 2 * 1024 * 1024,
-    env: { ...process.env, ...extraEnvironment, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...withoutComoteEnvironment(process.env), ...extraEnvironment, GIT_TERMINAL_PROMPT: "0" },
   });
   return result.stdout.trim();
 }

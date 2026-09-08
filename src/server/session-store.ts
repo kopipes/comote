@@ -16,6 +16,8 @@ interface SessionFile {
   sessions: SessionRecord[];
 }
 
+const LAST_SEEN_PERSIST_INTERVAL_MS = 5 * 60_000;
+
 export class SessionStore {
   private readonly filePath: string;
   private sessions = new Map<string, SessionRecord>();
@@ -55,8 +57,10 @@ export class SessionStore {
   async get(token: string): Promise<SessionRecord | null> {
     const session = this.sessions.get(hashToken(token));
     if (!session || Date.parse(session.expiresAt) <= Date.now()) return null;
-    session.lastSeenAt = new Date().toISOString();
-    void this.save();
+    if (Date.now() - Date.parse(session.lastSeenAt) >= LAST_SEEN_PERSIST_INTERVAL_MS) {
+      session.lastSeenAt = new Date().toISOString();
+      void this.save().catch((error) => console.error("Could not persist session activity.", error));
+    }
     return session;
   }
 
@@ -88,12 +92,13 @@ export class SessionStore {
   }
 
   private save(): Promise<void> {
-    this.saveChain = this.saveChain.then(async () => {
+    const save = async () => {
       const tempPath = `${this.filePath}.tmp`;
       const payload = JSON.stringify({ sessions: [...this.sessions.values()] }, null, 2);
       await writeFile(tempPath, payload, { mode: 0o600 });
       await rename(tempPath, this.filePath);
-    });
+    };
+    this.saveChain = this.saveChain.then(save, save);
     return this.saveChain;
   }
 }

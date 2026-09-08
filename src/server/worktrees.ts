@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { withoutComoteEnvironment } from "./child-environment.js";
 import type { Project } from "./projects.js";
 
 const execFileAsync = promisify(execFile);
@@ -160,7 +161,7 @@ async function git(cwd: string, args: string[], timeout = 30_000): Promise<strin
   const result = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout,
     maxBuffer: 1024 * 1024,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    env: { ...withoutComoteEnvironment(process.env), GIT_TERMINAL_PROMPT: "0" },
   });
   return result.stdout.trim();
 }

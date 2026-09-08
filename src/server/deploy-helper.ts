@@ -610,7 +610,7 @@ async function allocateResourcePort(state: DeployState, start: number, end: numb
 }
 
 async function readSecrets(slug: string): Promise<Record<string, string>> {
-  return readFile(path.join("/etc/comote/secrets", `${slug}.json`), "utf8").then((value) => JSON.parse(value) as Record<string, string>).catch(() => ({}));
+  return readJsonObject(path.join("/etc/comote/secrets", `${slug}.json`), "Production secrets");
 }
 
 async function writeSecrets(slug: string, secrets: Record<string, string>): Promise<void> {
@@ -619,7 +619,7 @@ async function writeSecrets(slug: string, secrets: Record<string, string>): Prom
 }
 
 async function readInternalCredentials(slug: string): Promise<InternalCredentials> {
-  return readFile(path.join("/etc/comote/resources", `${slug}.json`), "utf8").then((value) => JSON.parse(value) as InternalCredentials).catch(() => ({}));
+  return readJsonObject(path.join("/etc/comote/resources", `${slug}.json`), "Managed resource credentials");
 }
 
 async function writeInternalCredentials(slug: string, credentials: InternalCredentials): Promise<void> {
@@ -803,9 +803,11 @@ async function pruneReleases(appRoot: string, releases: ReleaseRecord[], protect
 }
 
 async function readState(config: HelperConfig): Promise<DeployState> {
-  const state = await readFile(config.statePath, "utf8")
-    .then((value) => JSON.parse(value) as DeployState)
-    .catch(() => ({ nextPort: config.portStart, apps: {} }));
+  const content = await readFile(config.statePath, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  });
+  const state = content ? parseDeployState(content, config.portStart, config.portEnd) : { nextPort: config.portStart, apps: {} };
   for (const app of Object.values(state.apps)) {
     app.resources ??= {};
     app.current ??= "";
@@ -822,6 +824,45 @@ async function readState(config: HelperConfig): Promise<DeployState> {
     }));
   }
   return state;
+}
+
+export function parseDeployState(content: string, portStart: number, portEnd: number): DeployState {
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new Error("Production deployment state is corrupt; refusing to continue with an empty state.");
+  }
+  if (!isRecord(value) || !isRecord(value.apps)) {
+    throw new Error("Production deployment state is invalid; refusing to continue with an empty state.");
+  }
+  const nextPort = Number(value.nextPort);
+  return {
+    nextPort: Number.isInteger(nextPort) && nextPort >= portStart && nextPort <= portEnd ? nextPort : portStart,
+    apps: value.apps as Record<string, AppRecord>,
+  };
+}
+
+async function readJsonObject<T extends Record<string, unknown>>(target: string, label: string): Promise<T> {
+  const content = await readFile(target, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  });
+  if (!content) return {} as T;
+  let value: unknown;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw new Error(`${label} file is corrupt; refusing to overwrite it.`);
+  }
+  if (!isRecord(value) || Object.values(value).some((entry) => typeof entry !== "string")) {
+    throw new Error(`${label} file is invalid; refusing to overwrite it.`);
+  }
+  return value as T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 async function writeState(config: HelperConfig, state: DeployState): Promise<void> {
@@ -952,9 +993,12 @@ async function fileExists(target: string): Promise<boolean> {
 
 async function main(): Promise<void> {
   let input = "";
-  process.stdin.setEncoding("utf8");
-  for await (const chunk of process.stdin) input += chunk;
   try {
+    process.stdin.setEncoding("utf8");
+    for await (const chunk of process.stdin) {
+      input += chunk;
+      if (Buffer.byteLength(input, "utf8") > 1024 * 1024) throw new Error("Deployment request is too large.");
+    }
     const result = await handleDeployRequest(JSON.parse(input));
     process.stdout.write(JSON.stringify(result));
   } catch (cause) {
