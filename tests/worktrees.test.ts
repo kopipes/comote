@@ -54,6 +54,43 @@ test("legacy threads without a mapping continue in the canonical workspace", asy
   assert.equal(workspace.isolated, false);
 });
 
+test("a clean session without unmerged commits can remove its worktree and branch", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
+  const data = await mkdtemp(path.join(tmpdir(), "comote-data-"));
+  const registry = new ProjectRegistry(root);
+  const manager = new WorktreeManager(data);
+  await Promise.all([registry.init(), manager.init()]);
+  const project = await registry.create("remove-session-app");
+  const record = await manager.attach(await manager.prepare(project), "removable-thread");
+
+  await manager.remove(project, "removable-thread");
+
+  await assert.rejects(stat(record.path), { code: "ENOENT" });
+  assert.equal(manager.recordForThread(project, "removable-thread"), null);
+  const { stdout } = await execFileAsync("git", ["-C", project.path, "branch", "--list", record.branch]);
+  assert.equal(stdout.trim(), "");
+});
+
+test("session removal refuses uncommitted and unmerged work", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
+  const data = await mkdtemp(path.join(tmpdir(), "comote-data-"));
+  const registry = new ProjectRegistry(root);
+  const manager = new WorktreeManager(data);
+  await Promise.all([registry.init(), manager.init()]);
+  const project = await registry.create("protected-session-app");
+  const dirty = await manager.attach(await manager.prepare(project), "dirty-thread");
+  await writeFile(path.join(dirty.path, "unsaved.txt"), "not committed\n");
+  await assert.rejects(manager.remove(project, "dirty-thread"), /uncommitted project changes/);
+  assert.ok((await stat(dirty.path)).isDirectory());
+
+  const unmerged = await manager.attach(await manager.prepare(project), "unmerged-thread");
+  await writeFile(path.join(unmerged.path, "feature.txt"), "committed only on task\n");
+  await execFileAsync("git", ["-C", unmerged.path, "add", "feature.txt"]);
+  await execFileAsync("git", ["-C", unmerged.path, "commit", "-m", "feat: task-only change"]);
+  await assert.rejects(manager.remove(project, "unmerged-thread"), /commits that are not merged/);
+  assert.ok((await stat(unmerged.path)).isDirectory());
+});
+
 test("a clean task branch merges into the canonical branch with provenance", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
   const data = await mkdtemp(path.join(tmpdir(), "comote-data-"));

@@ -33,11 +33,12 @@ export class CodexClient {
     readonly events: EventHub,
   ) {}
 
-  async listThreads(cwd?: string | string[]): Promise<JsonObject[]> {
+  async listThreads(cwd?: string | string[], archived = false): Promise<JsonObject[]> {
     const result = await this.request<{ data?: JsonObject[] }>("thread/list", {
       limit: 100,
       sortKey: "updated_at",
       sortDirection: "desc",
+      archived,
       sourceKinds: ["appServer", "cli", "vscode"],
       ...(cwd ? { cwd } : {}),
     });
@@ -84,6 +85,20 @@ export class CodexClient {
 
   async interrupt(threadId: string): Promise<void> {
     await this.request("turn/interrupt", { threadId });
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    await this.request("thread/archive", { threadId });
+    this.loadedThreads.delete(threadId);
+  }
+
+  async unarchiveThread(threadId: string): Promise<void> {
+    await this.request("thread/unarchive", { threadId });
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.request("thread/delete", { threadId });
+    this.loadedThreads.delete(threadId);
   }
 
   async resolveApproval(

@@ -20,6 +20,7 @@ export interface Thread {
   cwd?: string;
   turns?: Array<{ items?: ThreadItem[] }>;
   status?: { type?: string; activeFlags?: string[] };
+  historyUnavailable?: boolean;
 }
 
 export interface ThreadItem {

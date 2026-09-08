@@ -119,6 +119,8 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
   const [busy, setBusy] = useState(false);
   const [addingProject, setAddingProject] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [managingSession, setManagingSession] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
   const streamRef = useRef<EventSource | null>(null);
@@ -155,10 +157,11 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
     setActivities([]);
     setApprovals([]);
     setError("");
-    api.get<{ threads: Thread[] }>(`/api/projects/${project.id}/threads`)
+    const query = showArchived ? "?archived=true" : "";
+    api.get<{ threads: Thread[] }>(`/api/projects/${project.id}/threads${query}`)
       .then(({ threads }) => setThreads(threads))
       .catch((cause) => setError((cause as Error).message));
-  }, [project?.id]);
+  }, [project?.id, showArchived]);
 
   useEffect(() => {
     void refreshGit();
@@ -285,6 +288,17 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
     setMobilePanel("chat");
   }
 
+  function sessionRemoved(threadId: string) {
+    streamRef.current?.close();
+    setThreads((current) => current.filter((item) => item.id !== threadId));
+    setThread(null);
+    setMessages([]);
+    setActivities([]);
+    setApprovals([]);
+    setGit(null);
+    setManagingSession(false);
+  }
+
   return (
     <div className="app-shell" data-panel={mobilePanel}>
       <header className="topbar">
@@ -316,8 +330,11 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
 
       <aside className="threads-pane">
         <div className="pane-heading">
-          <span>{project?.name ?? "Sessions"}</span>
-          <button className="new-button" onClick={newThread} disabled={!project || busy}>＋ New</button>
+          <span>{showArchived ? "Archived" : project?.name ?? "Sessions"}</span>
+          <div className="pane-actions">
+            <button className="text-button" onClick={() => setShowArchived((current) => !current)} disabled={!project || busy}>{showArchived ? "Active" : "Archived"}</button>
+            {!showArchived && <button className="new-button" onClick={newThread} disabled={!project || busy}>＋ New</button>}
+          </div>
         </div>
         <div className="thread-list">
           {threads.map((item) => (
@@ -326,7 +343,7 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
               <small>{formatRelative(item.updatedAt ?? item.createdAt)}</small>
             </button>
           ))}
-          {project && !threads.length && <EmptySmall text="Start a session and describe what you want to build." />}
+          {project && !threads.length && <EmptySmall text={showArchived ? "No archived sessions." : "Start a session and describe what you want to build."} />}
         </div>
       </aside>
 
@@ -341,16 +358,19 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
               <div className="run-states">
                 {git?.isolated && <span className="task-state">Isolated task</span>}
                 <span className={`run-state ${running ? "running" : ""}`}>{running ? "Codex is working" : "Ready"}</span>
+                <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
               </div>
             </div>
             <div className="message-scroll">
-              {messages.length === 0 && <StarterCards onChoose={sendMessage} />}
+              {showArchived && <div className="history-notice">This session is archived. Restore it from the session menu before continuing.</div>}
+              {thread.historyUnavailable && <div className="history-notice">This session can continue, but its earlier messages cannot be displayed by the current Codex server.</div>}
+              {messages.length === 0 && !thread.historyUnavailable && !showArchived && <StarterCards onChoose={sendMessage} />}
               {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
               {activities.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}
               {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={decide} />)}
               {running && <div className="thinking"><span /><span /><span /> Codex is working</div>}
             </div>
-            <Composer disabled={running} onSend={sendMessage} />
+            {!showArchived && <Composer disabled={running} onSend={sendMessage} />}
           </>
         )}
       </main>
@@ -367,6 +387,103 @@ function Workspace({ session, onLoggedOut }: { session: Session; onLoggedOut: ()
 
       {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onCreated={projectAdded} />}
       {settingsOpen && <SettingsDialog project={project} onClose={() => setSettingsOpen(false)} />}
+      {managingSession && project && thread && (
+        <SessionDialog
+          project={project}
+          thread={thread}
+          archived={showArchived}
+          onClose={() => setManagingSession(false)}
+          onRemoved={() => sessionRemoved(thread.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SessionDialog({ project, thread, archived, onClose, onRemoved }: { project: Project; thread: Thread; archived: boolean; onClose: () => void; onRemoved: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const title = thread.name || thread.preview || "New session";
+
+  async function archiveSession() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/api/projects/${project.id}/threads/${thread.id}/archive`);
+      onRemoved();
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+    }
+  }
+
+  async function restoreSession() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/api/projects/${project.id}/threads/${thread.id}/unarchive`);
+      onRemoved();
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+    }
+  }
+
+  async function deleteSession() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.post(`/api/projects/${project.id}/threads/${thread.id}/delete`);
+      onRemoved();
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !busy) onClose();
+    }}>
+      <section className="dialog session-dialog" role="dialog" aria-modal="true" aria-labelledby="session-options-title">
+        <div className="dialog-header">
+          <div><p className="eyebrow">{confirmDelete ? "Permanent action" : "Session"}</p><h2 id="session-options-title">{confirmDelete ? "Delete session?" : title}</h2></div>
+          <button className="icon-button" type="button" onClick={onClose} disabled={busy} aria-label="Close">×</button>
+        </div>
+        {confirmDelete ? (
+          <>
+            <p className="dialog-copy">This permanently deletes the Codex conversation and its isolated task workspace. Comote will refuse if there are uncommitted changes or commits that have not been merged.</p>
+            {error && <p className="form-error">{error}</p>}
+            <div className="dialog-actions">
+              <button className="secondary" type="button" onClick={() => { setConfirmDelete(false); setError(""); }} disabled={busy}>Back</button>
+              <button className="danger-button" type="button" onClick={deleteSession} disabled={busy}>{busy ? "Deleting…" : "Delete permanently"}</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="session-option-list">
+              {archived ? (
+                <button type="button" onClick={restoreSession} disabled={busy}>
+                  <strong>{busy ? "Restoring…" : "Restore session"}</strong>
+                  <span>Return it to the active session list and continue working.</span>
+                </button>
+              ) : (
+                <button type="button" onClick={archiveSession} disabled={busy}>
+                  <strong>{busy ? "Archiving…" : "Archive session"}</strong>
+                  <span>Hide it from the session list while preserving the conversation and project workspace.</span>
+                </button>
+              )}
+              <button className="danger-option" type="button" onClick={() => setConfirmDelete(true)} disabled={busy}>
+                <strong>Delete permanently</strong>
+                <span>Remove the conversation and its task workspace after a Git safety check.</span>
+              </button>
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            <div className="dialog-actions"><button className="secondary" type="button" onClick={onClose} disabled={busy}>Close</button></div>
+          </>
+        )}
+      </section>
     </div>
   );
 }

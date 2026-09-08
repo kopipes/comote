@@ -111,6 +111,7 @@
         <article class="explain-card"><h3>Push task vs Push main</h3><p><b>Push task branch</b> hanya mengirim cabang pekerjaan untuk backup/review. <b>Push main</b> mengirim versi resmi yang sudah digabungkan ke GitHub.</p></article>
         <article class="explain-card"><h3>Merge into main</h3><p>Lakukan setelah task bersih dan sudah di-commit. Jika ada konflik, Comote berhenti aman; minta Codex membantu menyelesaikannya.</p></article>
         <article class="explain-card"><h3>Repository public tetap butuh izin push</h3><p>Public berarti siapa pun boleh membaca, bukan menulis. Push tetap memerlukan SSH key atau credential GitHub dengan akses ke repository.</p></article>
+        <article class="explain-card"><h3>Rapikan session</h3><p>Tekan tombol <b>•••</b> pada session. <b>Archive</b> menyembunyikannya tanpa menghapus pekerjaan dan dapat dipulihkan dari daftar <b>Archived</b>. <b>Delete permanently</b> hanya berhasil bila tidak ada file belum di-commit atau commit yang belum di-merge.</p></article>
       </div>
     </section>
 
@@ -184,6 +185,7 @@
         <details><summary>Preview tidak mau berjalan</summary><p>Minta Codex memasang dependency dan memastikan <code>package.json</code> memiliki script <code>dev</code> atau <code>start</code>. Baca Preview logs untuk detail.</p></details>
         <details><summary>Deploy production gagal</summary><p>Pastikan canonical branch bersih, dependency memiliki <code>package-lock.json</code>, required secret sudah disimpan, dan health check aplikasi berhasil.</p></details>
         <details><summary>Ada conflict saat Merge</summary><p>Jangan memaksa merge. Kembali ke session task dan minta: “Selesaikan conflict dengan main, jalankan test, lalu commit hasilnya.”</p></details>
+        <details><summary>Tidak sengaja membuat session baru</summary><p>Buka session tersebut, tekan <b>•••</b>, lalu pilih <b>Delete permanently</b>. Untuk session yang mungkin masih diperlukan, pilih <b>Archive session</b> agar dapat dipulihkan kemudian.</p></details>
       </div>
     </section>
 

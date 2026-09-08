@@ -136,7 +136,8 @@ app.post("/api/projects/:projectId/settings/remote", requireCsrf, async (request
 
 app.get("/api/projects/:projectId/threads", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
-  const threads = (await codex.listThreads(worktrees.pathsForProject(project)))
+  const archived = queryString(request, "archived") === "true";
+  const threads = (await codex.listThreads(worktrees.pathsForProject(project), archived))
     .filter((thread) => worktrees.belongsToProject(project, String(thread.id ?? ""), thread.cwd));
   response.json({ threads });
 });
@@ -160,6 +161,33 @@ app.get("/api/projects/:projectId/threads/:threadId", async (request, response) 
   const project = await projects.get(param(request, "projectId"));
   const { thread } = await resolveThread(project, param(request, "threadId"), true);
   response.json({ thread });
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/archive", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  await codex.archiveThread(threadId);
+  response.status(204).end();
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/unarchive", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  await codex.unarchiveThread(threadId);
+  response.status(204).end();
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/delete", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  await worktrees.assertRemovable(project, threadId);
+  if (previews.status(project, threadId).selected) await previews.stop();
+  await codex.deleteThread(threadId);
+  await worktrees.remove(project, threadId);
+  response.status(204).end();
 });
 
 app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, async (request, response) => {
@@ -346,7 +374,7 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
     : message.includes("already exists") || message.includes("already in progress") ? 409
       : message === "Current password is incorrect." ? 401
         : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") ? 400
-          : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") ? 409
+          : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") || message.startsWith("Session has") ? 409
             : message.startsWith("Preview is not configured") ? 503
               : message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") ? 400
                 : message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") ? 502
@@ -432,6 +460,9 @@ function clearSessionCookie(response: Response): void {
 async function resolveThread(project: Project, threadId: string, includeTurns = false): Promise<{ thread: Record<string, unknown>; workspace: ThreadWorkspace }> {
   const thread = await codex.readThread(threadId, includeTurns).catch(async (error: Error) => {
     if (includeTurns && error.message.includes("not materialized yet")) return codex.readThread(threadId, false);
+    if (includeTurns && error.message.includes("list_turns is not supported yet")) {
+      return { ...await codex.readThread(threadId, false), historyUnavailable: true };
+    }
     throw error;
   });
   if (!worktrees.belongsToProject(project, threadId, thread.cwd)) throw new Error("Thread does not belong to this project.");

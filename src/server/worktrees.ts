@@ -117,6 +117,32 @@ export class WorktreeManager {
     return { ...record };
   }
 
+  async assertRemovable(project: Project, threadId: string): Promise<void> {
+    const record = this.recordForThread(project, threadId);
+    if (!record) return;
+    await this.validateRecordPath(record);
+
+    const status = await git(record.path, ["status", "--porcelain"]);
+    if (status) {
+      throw new Error("Session has uncommitted project changes. Commit or discard them before deleting it.");
+    }
+
+    const merged = await gitSucceeds(project.path, ["merge-base", "--is-ancestor", record.branch, record.baseBranch]);
+    if (!merged) {
+      throw new Error("Session has commits that are not merged into its base branch. Merge it before deleting it.");
+    }
+  }
+
+  async remove(project: Project, threadId: string): Promise<void> {
+    const record = this.recordForThread(project, threadId);
+    if (!record) return;
+    await this.assertRemovable(project, threadId);
+    await git(project.path, ["worktree", "remove", record.path], 60_000);
+    await git(project.path, ["branch", "-D", record.branch]);
+    this.records.delete(threadId);
+    await this.persist();
+  }
+
   pathsForProject(project: Project): string[] {
     const paths = [project.path];
     for (const record of this.records.values()) {
@@ -137,6 +163,14 @@ export class WorktreeManager {
       writableRoots: [project.path],
       isolated: false,
     };
+  }
+
+  private async validateRecordPath(record: WorktreeRecord): Promise<string> {
+    const info = await stat(record.path).catch(() => null);
+    if (!info?.isDirectory()) throw new Error("Task worktree is no longer available.");
+    const resolved = await realpath(record.path);
+    if (!this.isManagedPath(resolved)) throw new Error("Task worktree is outside the managed root.");
+    return resolved;
   }
 
   private isManagedPath(value: string): boolean {
@@ -164,4 +198,15 @@ async function git(cwd: string, args: string[], timeout = 30_000): Promise<strin
     env: { ...withoutComoteEnvironment(process.env), GIT_TERMINAL_PROMPT: "0" },
   });
   return result.stdout.trim();
+}
+
+async function gitSucceeds(cwd: string, args: string[]): Promise<boolean> {
+  try {
+    await git(cwd, args);
+    return true;
+  } catch (error) {
+    const exitCode = (error as NodeJS.ErrnoException & { code?: number }).code;
+    if (exitCode === 1) return false;
+    throw error;
+  }
 }
