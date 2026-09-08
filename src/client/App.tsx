@@ -52,19 +52,76 @@ function Splash() {
 }
 
 function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => void }) {
+  const [mode, setMode] = useState<"otp" | "password">("otp");
+  const [otpConfig, setOtpConfig] = useState<{ otpEnabled: boolean; destination: string } | null>(null);
+  const [challengeId, setChallengeId] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [deviceName, setDeviceName] = useState(detectDeviceName());
+  const [canResend, setCanResend] = useState(false);
+  const [resendDelay, setResendDelay] = useState(60);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  async function submit(event: FormEvent) {
+  useEffect(() => {
+    api.get<{ otpEnabled: boolean; destination: string }>("/api/login/config")
+      .then((config) => {
+        setOtpConfig(config);
+        if (!config.otpEnabled) setMode("password");
+      })
+      .catch(() => {
+        setOtpConfig({ otpEnabled: false, destination: "" });
+        setMode("password");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!challengeId) return;
+    setCanResend(false);
+    const timer = window.setTimeout(() => setCanResend(true), resendDelay * 1_000);
+    return () => window.clearTimeout(timer);
+  }, [challengeId, resendDelay]);
+
+  function authenticated(session: Session) {
+    api.setCsrf(session.csrf);
+    onAuthenticated(session);
+  }
+
+  async function requestOtp(event?: FormEvent) {
+    event?.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const challenge = await api.post<{ challengeId: string; expiresAt: string; resendAfterSeconds: number }>("/api/login/otp/request", { deviceName });
+      setChallengeId(challenge.challengeId);
+      setResendDelay(challenge.resendAfterSeconds);
+      setCode("");
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyOtp(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     try {
-      const session = await api.post<Session>("/api/login", { password, deviceName });
-      api.setCsrf(session.csrf);
-      onAuthenticated(session);
+      authenticated(await api.post<Session>("/api/login/otp/verify", { challengeId, code }));
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitPassword(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      authenticated(await api.post<Session>("/api/login", { password, deviceName }));
     } catch (cause) {
       setError((cause as Error).message);
     } finally {
@@ -86,20 +143,58 @@ function Login({ onAuthenticated }: { onAuthenticated: (session: Session) => voi
       </section>
       <section className="login-card">
         <p className="eyebrow">Private access</p>
-        <h2>Welcome back</h2>
-        <p className="muted">Sign in to wake your Comote workspace.</p>
-        <form onSubmit={submit}>
-          <label>
-            Device label
-            <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} maxLength={40} autoComplete="nickname" />
-          </label>
-          <label>
-            Password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" autoFocus />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button className="primary full" disabled={busy || password.length < 1}>{busy ? "Signing in…" : "Open Comote"}</button>
-        </form>
+        <h2>{mode === "password" ? "Use your password" : challengeId ? "Enter your code" : "Sign in with Ping"}</h2>
+        <p className="muted">{mode === "password"
+          ? "Use the existing Comote password. Ping will notify you after a successful login."
+          : challengeId
+            ? `We sent a one-time code to ${otpConfig?.destination || "your Ping account"}.`
+            : `Receive a one-time code in Ping${otpConfig?.destination ? ` at ${otpConfig.destination}` : ""}.`}</p>
+
+        {mode === "otp" && !challengeId && (
+          <form onSubmit={requestOtp}>
+            <label>
+              Device label
+              <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} maxLength={40} autoComplete="nickname" autoFocus />
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button className="primary full" disabled={busy || !otpConfig?.otpEnabled}>{busy ? "Sending…" : otpConfig === null ? "Loading Ping…" : "Send OTP to Ping"}</button>
+          </form>
+        )}
+
+        {mode === "otp" && challengeId && (
+          <form onSubmit={verifyOtp}>
+            <label>
+              6-digit OTP
+              <input className="otp-input" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus />
+            </label>
+            <p className="field-help">The code expires in 5 minutes and works only once.</p>
+            {error && <p className="form-error">{error}</p>}
+            <button className="primary full" disabled={busy || code.length !== 6}>{busy ? "Checking…" : "Verify and open Comote"}</button>
+            <button className="text-button login-switch" type="button" disabled={busy || !canResend} onClick={() => void requestOtp()}>{canResend ? "Send a new code" : `You can resend after ${resendDelay} seconds`}</button>
+          </form>
+        )}
+
+        {mode === "password" && (
+          <form onSubmit={submitPassword}>
+            <label>
+              Device label
+              <input value={deviceName} onChange={(event) => setDeviceName(event.target.value)} maxLength={40} autoComplete="nickname" />
+            </label>
+            <label>
+              Password
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" autoFocus />
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button className="primary full" disabled={busy || password.length < 1}>{busy ? "Signing in…" : "Open Comote"}</button>
+          </form>
+        )}
+
+        {otpConfig?.otpEnabled && (
+          <button className="text-button login-switch login-method-switch" type="button" disabled={busy} onClick={() => {
+            setMode((current) => current === "otp" ? "password" : "otp");
+            setError("");
+          }}>{mode === "otp" ? "Use password instead" : "Use Ping OTP instead"}</button>
+        )}
         <p className="secure-note"><span className="status-dot" /> Protected by Tailscale and an encrypted session.</p>
       </section>
     </main>

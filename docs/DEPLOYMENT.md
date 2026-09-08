@@ -7,7 +7,8 @@ This document records the active single-user deployment as of 2026-09-07. It int
 - Private URL: `https://comote-vps.tailb6b750.ts.net/`
 - Public user guide: `https://guide.apps.devop.my.id/`
 - The client device must be signed in to the same Tailscale network.
-- Comote then requires its own password and records the supplied device name in session and Git provenance.
+- Comote then requires either a Ping OTP or its existing password and records the supplied device name in session and Git provenance.
+- Login defaults to a one-time code delivered by Ping. The existing Comote password remains available as an independent fallback and triggers a Ping security notice after successful use.
 - The app is installable from the browser as a PWA on a phone or laptop.
 
 ## Network topology
@@ -40,6 +41,8 @@ The public Comote guide is served as static files from the active Comote release
 - Root-only local backups: `/var/backups/comote` (14-day retention)
 
 The service runs as the locked, non-sudo `coder` account. Its systemd sandbox grants write access only to the Comote state, Codex state, and project workspace paths.
+
+The root-only environment also contains the Ping webhook token and fixed OTP destination. The browser receives only a masked destination; webhook credentials and full destination configuration never enter client assets or Git history.
 
 ## Health and recovery
 

@@ -8,6 +8,8 @@ import { DeploymentManager } from "./deployment.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
 import { PasswordStore } from "./password.js";
+import { OtpStore } from "./otp.js";
+import { PingClient } from "./ping.js";
 import { PreviewManager } from "./preview.js";
 import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
@@ -25,6 +27,8 @@ declare global {
 const config = loadConfig();
 const sessions = new SessionStore(config.dataDir, config.sessionDays);
 const passwords = new PasswordStore(config.dataDir, config.passwordHash);
+const otp = new OtpStore();
+const ping = new PingClient(config.pingWebhookUrl, config.pingWebhookToken, config.otpEmail);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
 const previews = new PreviewManager(config.previewPort, config.previewUrl);
@@ -59,12 +63,47 @@ app.get("/api/health", (_request, response) => {
   response.json({ ok: true, service: "comote" });
 });
 
+app.get("/api/login/config", (_request, response) => {
+  response.json({ otpEnabled: ping.enabled, destination: ping.enabled ? ping.maskedDestination : "" });
+});
+
+app.post("/api/login/otp/request", async (request, response) => {
+  if (!ping.enabled) throw new Error("Ping OTP is not configured.");
+  const deviceName = typeof request.body?.deviceName === "string" ? request.body.deviceName : "Unknown device";
+  const challenge = otp.create(clientIp(request), deviceName);
+  try {
+    await ping.sendOtp(challenge.code, deviceName);
+  } catch (error) {
+    otp.discard(challenge.challengeId);
+    throw error;
+  }
+  response.status(202).json({
+    challengeId: challenge.challengeId,
+    expiresAt: challenge.expiresAt,
+    resendAfterSeconds: challenge.resendAfterSeconds,
+  });
+});
+
+app.post("/api/login/otp/verify", async (request, response) => {
+  if (!ping.enabled) throw new Error("Ping OTP is not configured.");
+  const challengeId = typeof request.body?.challengeId === "string" ? request.body.challengeId : "";
+  const code = typeof request.body?.code === "string" ? request.body.code.trim() : "";
+  const verified = otp.verify(challengeId, code, clientIp(request));
+  const { token, session } = await sessions.create(verified.deviceName);
+  setSessionCookie(response, token);
+  response.json(sessionPayload(session));
+});
+
 app.post("/api/login", async (request, response) => {
-  const ip = request.ip || request.socket.remoteAddress || "unknown";
-  const state = loginAttempts.get(ip);
+  const ip = clientIp(request);
+  let state = loginAttempts.get(ip);
   if (state && state.blockedUntil > Date.now()) {
     response.status(429).json({ error: "Too many attempts. Try again later." });
     return;
+  }
+  if (state?.blockedUntil) {
+    loginAttempts.delete(ip);
+    state = undefined;
   }
 
   const password = typeof request.body?.password === "string" ? request.body.password : "";
@@ -84,6 +123,10 @@ app.post("/api/login", async (request, response) => {
   const { token, session } = await sessions.create(deviceName);
   setSessionCookie(response, token);
   response.json(sessionPayload(session));
+  if (ping.enabled) {
+    void ping.notifyPasswordLogin(session.deviceName)
+      .catch((error: Error) => console.error(`Could not send Ping password-login notice: ${error.message}`));
+  }
 });
 
 app.use("/api", authenticate);
@@ -369,20 +412,8 @@ if (config.production) {
 
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   const message = error instanceof Error ? error.message : "Unexpected error.";
-  console.error(error);
-  const status = message.includes("not found") ? 404
-    : message.includes("already exists") || message.includes("already in progress") ? 409
-      : message === "Current password is incorrect." ? 401
-        : message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") ? 400
-          : message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") || message.startsWith("Session has") ? 409
-            : message.startsWith("Preview is not configured") ? 503
-              : message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") ? 400
-                : message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") ? 502
-                  : message.startsWith("Git operation failed") ? 502
-                    : message.startsWith("Production deployment is not configured") ? 503
-                      : message.startsWith("A deployment is already in progress") ? 409
-                        : message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs") ? 400
-                    : 500;
+  const status = errorStatus(message);
+  if (status >= 500) console.error(error);
   response.status(status).json({ error: message });
 });
 
@@ -436,6 +467,22 @@ function param(request: Request, key: string): string {
 function queryString(request: Request, key: string): string {
   const value = request.query[key];
   return typeof value === "string" ? value : "";
+}
+
+function clientIp(request: Request): string {
+  return request.ip || request.socket.remoteAddress || "unknown";
+}
+
+function errorStatus(message: string): number {
+  if (message.includes("not found")) return 404;
+  if (message.includes("already exists") || message.includes("already in progress")) return 409;
+  if (message === "OTP is invalid or expired." || message === "Current password is incorrect.") return 401;
+  if (message.startsWith("Wait before requesting another OTP") || message.startsWith("OTP requests are temporarily limited")) return 429;
+  if (message.startsWith("Ping OTP is not configured") || message.startsWith("Preview is not configured") || message.startsWith("Production deployment is not configured")) return 503;
+  if (message.startsWith("Ping OTP delivery") || message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") || message.startsWith("Git operation failed")) return 502;
+  if (message.startsWith("A deployment is already in progress") || message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") || message.startsWith("Session has")) return 409;
+  if (message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") || message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") || message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs")) return 400;
+  return 500;
 }
 
 function setSessionCookie(response: Response, token: string): void {

@@ -73,8 +73,8 @@
         </article>
 
         <article class="step screenshot-step">
-          <div class="step-copy"><span class="step-number">2</span><div><h3>Login ke Comote</h3><p>Beri nama perangkat, misalnya <code>HP Bob</code> atau <code>Laptop</code>, lalu masukkan password Comote. Nama perangkat otomatis dicatat pada commit yang dibuat dari UI.</p></div></div>
-          <figure><img src="assets/01-login.png" alt="Halaman login Comote dengan kolom nama perangkat dan password" /><figcaption>Login Comote adalah lapisan keamanan kedua setelah Tailscale.</figcaption></figure>
+          <div class="step-copy"><span class="step-number">2</span><div><h3>Login ke Comote</h3><p>Beri nama perangkat, misalnya <code>HP Bob</code> atau <code>Laptop</code>, lalu tekan <b>Send OTP to Ping</b>. Masukkan kode 6 digit dari DM Ping untuk langsung masuk. Jika diperlukan, pilih <b>Use password instead</b> untuk menggunakan password lama.</p><ul><li>OTP berlaku 5 menit dan hanya dapat dipakai sekali.</li><li>Login password yang berhasil mengirim notifikasi keamanan ke Ping.</li><li>Nama perangkat otomatis dicatat pada commit yang dibuat dari UI.</li></ul></div></div>
+          <figure><img src="assets/01-login.png" alt="Halaman login Comote dengan pilihan utama Send OTP to Ping" /><figcaption>OTP Ping menjadi pilihan utama; password lama tetap tersedia sebagai fallback.</figcaption></figure>
         </article>
 
         <article class="step screenshot-step">
@@ -180,6 +180,7 @@
       <div class="section-heading"><div><p class="eyebrow">Bila ada kendala</p><h2>Checklist cepat</h2></div><p>Sebagian besar masalah dapat dikenali dari pesan yang muncul di UI.</p></div>
       <div class="faq">
         <details><summary>Comote tidak dapat dibuka</summary><p>Pastikan aplikasi Tailscale aktif dan perangkat login ke tailnet yang sama. Comote memang tidak dapat dibuka dari internet umum.</p></details>
+        <details><summary>OTP Ping belum masuk</summary><p>Tunggu beberapa detik dan periksa DM dari <b>Ping! Bot</b>. Kode berlaku 5 menit. Tombol kirim ulang tersedia setelah 60 detik; Anda juga tetap dapat memilih <b>Use password instead</b>.</p></details>
         <details><summary>Import repository gagal</summary><p>Periksa URL GitHub. Public repository harus dapat dibuka tanpa login. Untuk private repository, akses GitHub perlu dikonfigurasi pada VPS.</p></details>
         <details><summary>Push gagal atau meminta login</summary><p>Repository tujuan belum memberikan akses tulis kepada SSH key/credential VPS, atau remote masih menggunakan metode autentikasi yang berbeda.</p></details>
         <details><summary>Preview tidak mau berjalan</summary><p>Minta Codex memasang dependency dan memastikan <code>package.json</code> memiliki script <code>dev</code> atau <code>start</code>. Baca Preview logs untuk detail.</p></details>

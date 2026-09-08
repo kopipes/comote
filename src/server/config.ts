@@ -14,6 +14,9 @@ export interface ComoteConfig {
   previewUrl: string;
   deployDomain: string;
   deploySocket: string;
+  pingWebhookUrl: string;
+  pingWebhookToken: string;
+  otpEmail: string;
   production: boolean;
 }
 
@@ -27,6 +30,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ComoteConfig {
   const passwordHash = env.COMOTE_PASSWORD_HASH ?? "";
   if (production && !passwordHash) {
     throw new Error("COMOTE_PASSWORD_HASH is required in production.");
+  }
+  const pingWebhookToken = env.COMOTE_PING_WEBHOOK_TOKEN?.trim() ?? "";
+  const otpEmail = env.COMOTE_OTP_EMAIL?.trim().toLowerCase() ?? "";
+  if (Boolean(pingWebhookToken) !== Boolean(otpEmail)) {
+    throw new Error("COMOTE_PING_WEBHOOK_TOKEN and COMOTE_OTP_EMAIL must be configured together.");
+  }
+  if (otpEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(otpEmail)) {
+    throw new Error("COMOTE_OTP_EMAIL must be a valid email address.");
+  }
+  const pingWebhookUrl = env.COMOTE_PING_WEBHOOK_URL?.trim() || "https://chat.devop.my.id/api/webhook/notify";
+  if (pingWebhookToken && new URL(pingWebhookUrl).protocol !== "https:") {
+    throw new Error("COMOTE_PING_WEBHOOK_URL must use HTTPS.");
   }
 
   return {
@@ -45,6 +60,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ComoteConfig {
     previewUrl: env.COMOTE_PREVIEW_URL ?? "",
     deployDomain: env.COMOTE_DEPLOY_DOMAIN?.trim().toLowerCase() ?? "",
     deploySocket: env.COMOTE_DEPLOY_SOCKET ?? "/run/comote-deploy.sock",
+    pingWebhookUrl,
+    pingWebhookToken,
+    otpEmail,
     production,
   };
 }

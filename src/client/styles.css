@@ -140,6 +140,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .login-card h2 { margin: 0; font-size: 30px; letter-spacing: -.035em; }
 .muted { color: var(--muted); line-height: 1.5; }
 .login-card form { display: grid; gap: 18px; margin-top: 32px; }
+.otp-input { text-align: center; font: 700 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .24em; }
+.login-switch { justify-self: center; padding: 7px 5px; }
+.login-method-switch { width: 100%; margin-top: 18px; padding-top: 17px; border-top: 1px solid var(--line); }
 
 label { display: grid; gap: 8px; color: #b8c8c1; font-size: 12px; font-weight: 650; }
 input, textarea {

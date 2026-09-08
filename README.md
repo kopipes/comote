@@ -49,7 +49,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 
 ## Current MVP surface
 
-- Private login with remembered device label
+- Ping OTP-first login with remembered device label and the existing password as an independent fallback
 - Create blank Git projects or import public GitHub repositories from the Projects pane
 - Change the Comote password and configure the selected project's public GitHub remote from Settings
 - Project and Codex thread discovery
@@ -66,5 +66,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - One-click preview for Node projects through a private, dedicated Tailscale Serve URL
 - One-click local production deployment for npm projects, with isolated releases, persistent storage, SQLite/PostgreSQL/MySQL, private Redis, secrets, migrations, health checks, wildcard HTTPS, and rollback
 - Public illustrated user guide at `https://guide.apps.devop.my.id/`, also linked from the Comote header
+
+Ping OTP requires `COMOTE_PING_WEBHOOK_TOKEN` and `COMOTE_OTP_EMAIL`; the optional webhook URL defaults to the Ping notify endpoint. Keep the webhook token only in the root-owned production environment. OTP challenges remain in memory, expire after five minutes, are single-use, and are rate-limited.
 
 For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. **Deploy production** always packages the clean canonical branch, never an uncommitted task worktree. Add `comote.deploy.json`—normally by asking Codex in natural language—to select SQLite, PostgreSQL, MySQL, Redis, migration, health-check, and persistent-storage behavior. See [Project deployment](docs/PROJECT-DEPLOYMENT.md). Private GitHub credentials, passkeys, multi-preview hosting, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
