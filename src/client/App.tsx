@@ -876,7 +876,7 @@ function Composer({ disabled, onSend, models, selectedModel, modelBusy, onModelC
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = text.trim();
-    if (!value || disabled) return;
+    if (!value || disabled || modelBusy) return;
     setText("");
     onSend(value);
   }
@@ -888,7 +888,7 @@ function Composer({ disabled, onSend, models, selectedModel, modelBusy, onModelC
           event.currentTarget.form?.requestSubmit();
         }
       }} />
-      <button className="send-button" disabled={disabled || !text.trim()} aria-label="Send">↑</button>
+      <button className="send-button" disabled={disabled || modelBusy || !text.trim()} aria-label="Send">↑</button>
       <div className="composer-footer">
         <small>Enter to send · Shift + Enter for a new line</small>
         <label className="model-picker" title={selected?.description || defaultModel?.description || "Use the default model selected by Codex."}>
