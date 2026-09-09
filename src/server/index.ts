@@ -15,6 +15,7 @@ import { ProjectRegistry, type Project } from "./projects.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
 import { WorktreeManager, type ThreadWorkspace } from "./worktrees.js";
 import { ThreadModelStore } from "./thread-models.js";
+import { ThreadUsageStore } from "./thread-usage.js";
 
 declare global {
   namespace Express {
@@ -35,12 +36,14 @@ const worktrees = new WorktreeManager(config.dataDir);
 const previews = new PreviewManager(config.previewPort, config.previewUrl);
 const deployments = new DeploymentManager(config.dataDir, config.deployDomain, config.deploySocket);
 const events = new EventHub();
-const codex = new CodexClient(config, events);
+const threadUsage = new ThreadUsageStore(config.dataDir);
+const codex = new CodexClient(config, events, threadUsage);
 const threadModels = new ThreadModelStore(config.dataDir);
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>();
 const mergingProjects = new Set<string>();
+const handoffThreads = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init()]);
 
 const app = express();
 app.disable("x-powered-by");
@@ -235,6 +238,80 @@ app.post("/api/projects/:projectId/threads/:threadId/model", requireCsrf, async 
   response.json({ model });
 });
 
+app.get("/api/projects/:projectId/threads/:threadId/context", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  response.json({ usage: threadUsage.get(threadId) });
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/compact", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  const { thread } = await resolveThread(project, threadId);
+  assertThreadIdle(thread);
+  await codex.compactThread(threadId, true);
+  response.json({ completed: true });
+});
+
+app.post("/api/projects/:projectId/threads/:threadId/continue", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  const { thread, workspace } = await resolveThread(project, threadId);
+  assertThreadIdle(thread);
+  if (handoffThreads.has(threadId)) throw new Error("A session handoff is already in progress.");
+  handoffThreads.add(threadId);
+  let nextThreadId = "";
+  let continuationAttached = false;
+  let oldArchived = false;
+  try {
+    await codex.compactThread(threadId, true);
+    const model = threadModels.get(threadId);
+    const summary = await codex.summarizeThread(
+      threadId,
+      workspace.path,
+      request.comoteSession!.deviceName,
+      workspace.writableRoots,
+      model,
+    );
+    const repository = await gitStatus(workspace.path);
+    const oldTitle = threadTitle(thread);
+    const next = await codex.startThread(workspace.path);
+    nextThreadId = typeof next.id === "string" ? next.id : "";
+    if (!nextThreadId) throw new Error("Invalid continuation session returned by Codex.");
+    if (workspace.isolated) {
+      await worktrees.attachContinuation(project, threadId, nextThreadId);
+      continuationAttached = true;
+    }
+    if (model) await threadModels.set(nextThreadId, model);
+    const nextTitle = `Continue: ${oldTitle}`.slice(0, 80);
+    await codex.setThreadName(nextThreadId, nextTitle).catch(() => undefined);
+    await codex.archiveThread(threadId);
+    oldArchived = true;
+    const seed = buildContinuationSeed(oldTitle, summary, repository.branch, repository.status);
+    await codex.startTurn(
+      nextThreadId,
+      workspace.path,
+      seed,
+      request.comoteSession!.deviceName,
+      workspace.writableRoots,
+      model,
+    );
+    response.status(201).json({ thread: { ...next, name: nextTitle }, summary });
+  } catch (error) {
+    if (oldArchived) await codex.unarchiveThread(threadId).catch(() => undefined);
+    if (nextThreadId) {
+      await codex.interrupt(nextThreadId).catch(() => undefined);
+      await codex.deleteThread(nextThreadId).catch(() => undefined);
+      if (continuationAttached) await worktrees.detach(nextThreadId).catch(() => undefined);
+      await threadModels.remove(nextThreadId).catch(() => undefined);
+    }
+    throw error;
+  } finally {
+    handoffThreads.delete(threadId);
+  }
+});
+
 app.post("/api/projects/:projectId/threads/:threadId/archive", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   const threadId = param(request, "threadId");
@@ -247,6 +324,10 @@ app.post("/api/projects/:projectId/threads/:threadId/unarchive", requireCsrf, as
   const project = await projects.get(param(request, "projectId"));
   const threadId = param(request, "threadId");
   await resolveThread(project, threadId);
+  const activeThreadIds = new Set((await codex.listThreads(worktrees.pathsForProject(project)))
+    .map((thread) => String(thread.id ?? ""))
+    .filter(Boolean));
+  worktrees.assertRestorable(project, threadId, activeThreadIds);
   await codex.unarchiveThread(threadId);
   response.status(204).end();
 });
@@ -260,6 +341,7 @@ app.post("/api/projects/:projectId/threads/:threadId/delete", requireCsrf, async
   await codex.deleteThread(threadId);
   await worktrees.remove(project, threadId);
   await threadModels.remove(threadId);
+  await threadUsage.remove(threadId);
   response.status(204).end();
 });
 
@@ -506,7 +588,7 @@ function clientIp(request: Request): string {
 
 function errorStatus(message: string): number {
   if (message.includes("not found")) return 404;
-  if (message.includes("already exists") || message.includes("already in progress")) return 409;
+  if (message.includes("already exists") || message.includes("already in progress") || message.includes("currently working") || message.includes("Another active session is using")) return 409;
   if (message === "OTP is invalid or expired." || message === "Current password is incorrect.") return 401;
   if (message.startsWith("Wait before requesting another OTP") || message.startsWith("OTP requests are temporarily limited")) return 429;
   if (message.startsWith("Ping OTP is not configured") || message.startsWith("Preview is not configured") || message.startsWith("Production deployment is not configured")) return 503;
@@ -545,6 +627,33 @@ async function resolveThread(project: Project, threadId: string, includeTurns = 
   });
   if (!worktrees.belongsToProject(project, threadId, thread.cwd)) throw new Error("Thread does not belong to this project.");
   return { thread, workspace: await worktrees.forThread(project, threadId) };
+}
+
+function assertThreadIdle(thread: Record<string, unknown>): void {
+  const status = thread.status && typeof thread.status === "object" ? thread.status as Record<string, unknown> : null;
+  if (status?.type === "active") throw new Error("Session is currently working. Wait for it to finish before continuing.");
+}
+
+function threadTitle(thread: Record<string, unknown>): string {
+  for (const candidate of [thread.name, thread.preview]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "Session";
+}
+
+function buildContinuationSeed(oldTitle: string, summary: string, branch: string, status: string): string {
+  return [
+    `Continue the development work handed off from the previous Comote session: ${oldTitle}.`,
+    "The fresh session uses the exact same Git worktree and branch. Treat the handoff below as context, not as a new request to redo completed work.",
+    "Do not modify files yet. First acknowledge continuity with a concise summary and state the single best next action, then wait for the user.",
+    "",
+    "## Previous session handoff",
+    summary.slice(0, 14_000),
+    "",
+    "## Verified Git state at handoff",
+    `Branch: ${branch}`,
+    status ? `Working tree changes:\n${status.slice(0, 3_000)}` : "Working tree: clean",
+  ].join("\n");
 }
 
 function writeSse(response: Response, event: unknown): void {

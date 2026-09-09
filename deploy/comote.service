@@ -9,6 +9,7 @@ User=coder
 Group=coder
 WorkingDirectory=/opt/comote/current
 EnvironmentFile=/etc/comote/comote.env
+ExecStartPre=/usr/bin/bash /opt/comote/current/deploy/install-codex-skills.sh
 ExecStart=/usr/bin/node build/server/index.js
 Restart=on-failure
 RestartSec=3

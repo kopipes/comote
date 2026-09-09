@@ -29,6 +29,7 @@ The public Comote guide is served as static files from the active Comote release
 - Comote state: `/home/coder/.local/share/comote`
 - Isolated task worktrees: `/home/coder/.local/share/comote/worktrees`
 - Codex login and sessions: `/home/coder/.codex`
+- Global Codex UI/UX skill: `/home/coder/.codex/skills/ui-ux-pro-max`
 - Root-only environment: `/etc/comote/comote.env`
 - Service definition: `/etc/systemd/system/comote.service`
 - Deployment broker socket: `/run/comote-deploy.sock`
@@ -84,5 +85,9 @@ ssh cloudeka48 'sudo nginx -t'
 ## Development continuity
 
 All browser clients operate on the same VPS development environment. New Codex tasks use persistent isolated Git worktrees, so parallel tasks do not overwrite each other's uncommitted files; existing threads continue in their original canonical workspace. A clean, committed task branch can be merged explicitly into the canonical branch. Commits and task merges made by the Comote UI include `Requested-From`, `Developed-On`, `Assisted-By`, and `Comote-Session` trailers so the origin remains visible in Git history.
+
+Comote records context usage reported by Codex and exposes native conversation compaction. A fresh-session handoff first compacts the old conversation, asks it for a structured summary, creates a new Codex session on the exact same worktree and branch, archives the old session, and seeds the new session with the summary plus verified Git status. Shared continuation worktrees are reference-protected so deleting the archived conversation cannot delete files still used by its successor.
+
+The core UI/UX design skill is installed globally by the service `ExecStartPre` step. It remains part of Comote infrastructure, not an application repository. Search results guide the code Codex generates; the skill source, catalogs, and scripts are never copied into project workspaces.
 
 The repository uses `https://github.com/kopipes/comote.git` as its off-VPS Git remote. The VPS workspace uses a dedicated, repository-scoped SSH deploy key; that key must be registered on GitHub with write access before the explicit Push action can authenticate.

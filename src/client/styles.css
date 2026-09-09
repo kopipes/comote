@@ -423,6 +423,11 @@ button:not(:disabled):active { transform: translateY(1px); }
 .run-states { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .task-state { border: 1px solid var(--task-line); border-radius: 999px; color: var(--mint); padding: 5px 8px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .session-menu-button { width: 30px; height: 30px; font-size: 11px; letter-spacing: 1px; }
+.context-meter { min-height: 30px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line-bright); border-radius: 999px; background: transparent; color: var(--muted); padding: 0 9px; cursor: pointer; font-size: 10px; font-weight: 700; }
+.context-meter:hover { background: var(--panel-2); }
+.context-meter.watch { border-color: var(--notice-line); color: var(--amber); }
+.context-meter.high { border-color: var(--danger-line); color: var(--danger); }
+.context-meter-ring { --context-progress: 0%; width: 10px; height: 10px; border-radius: 50%; background: conic-gradient(currentColor var(--context-progress), var(--line-bright) 0); box-shadow: inset 0 0 0 2px var(--panel); }
 
 .message-scroll {
   flex: 1;
@@ -432,6 +437,8 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 
 .history-notice { max-width: 760px; margin: 0 auto 22px; border: 1px solid var(--notice-line); border-radius: 10px; background: var(--notice-bg); color: var(--notice-ink); padding: 11px 13px; font-size: 11px; line-height: 1.55; }
+.continuity-notice { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; cursor: pointer; }
+.continuity-notice span { flex: 0 0 auto; font-size: 16px; }
 
 .message { max-width: 760px; margin: 0 auto 28px; }
 .message.user { display: flex; flex-direction: column; align-items: flex-end; }
@@ -533,6 +540,17 @@ button:not(:disabled):active { transform: translateY(1px); }
 .session-option-list button:hover:not(:disabled) { background: var(--panel-2); }
 .session-option-list strong { font-size: 13px; }
 .session-option-list span { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.context-card { display: grid; gap: 10px; border: 1px solid var(--line-bright); border-radius: 12px; background: var(--option-bg); padding: 14px; }
+.context-card > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.context-card strong { font-size: 13px; }
+.context-card > div:first-child span { color: var(--muted); font: 700 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.context-card small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.context-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.context-track span { display: block; height: 100%; border-radius: inherit; background: var(--mint); transition: width .25s ease; }
+.context-card.watch .context-track span { background: var(--amber); }
+.context-card.high .context-track span { background: var(--danger); }
+.context-card.watch > div:first-child span { color: var(--amber); }
+.context-card.high > div:first-child span { color: var(--danger); }
 .session-option-list .danger-option { border-color: var(--danger-line); }
 .session-option-list .danger-option strong { color: var(--danger); }
 .danger-button { min-height: 42px; border: 1px solid var(--danger-line); border-radius: 11px; padding: 0 15px; background: var(--danger-bg); color: var(--danger-ink); cursor: pointer; font-weight: 700; }
@@ -628,6 +646,8 @@ button:not(:disabled):active { transform: translateY(1px); }
   .conversation-header { min-height: 62px; padding: 11px 14px; }
   .conversation-header h2 { max-width: 220px; font-size: 14px; }
   .run-state { padding: 6px 8px; }
+  .context-meter { padding: 0 7px; }
+  .context-meter > span:last-child { display: none; }
   .message-scroll { padding: 20px 15px 135px; }
   .message-text { font-size: 13px; }
   .message.user .message-text { max-width: 90%; }

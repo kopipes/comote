@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git",
+  "revision": "4aad0584d92131626b16d4ff4d77f0455385013c",
+  "license": "MIT",
+  "scope": ".claude/skills/ui-ux-pro-max",
+  "integration": "Vendored as a global Comote Codex skill; application repositories receive only generated implementation output."
+}

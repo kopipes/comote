@@ -46,6 +46,14 @@ export interface CodexModel {
   supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
 }
 
+export interface ThreadContextUsage {
+  usedTokens: number;
+  contextWindow: number;
+  percentage: number;
+  cumulativeTokens: number;
+  updatedAt: string;
+}
+
 export interface GitState {
   branch: string;
   status: string;

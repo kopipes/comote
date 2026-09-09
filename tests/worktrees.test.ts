@@ -54,6 +54,29 @@ test("legacy threads without a mapping continue in the canonical workspace", asy
   assert.equal(workspace.isolated, false);
 });
 
+test("a fresh continuation shares one task worktree without allowing the archived session to restore", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
+  const data = await mkdtemp(path.join(tmpdir(), "comote-data-"));
+  const registry = new ProjectRegistry(root);
+  const manager = new WorktreeManager(data);
+  await Promise.all([registry.init(), manager.init()]);
+  const project = await registry.create("continued-app");
+  const original = await manager.attach(await manager.prepare(project), "thread-old");
+  const next = await manager.attachContinuation(project, "thread-old", "thread-new");
+
+  assert.equal(next.path, original.path);
+  assert.equal(next.branch, original.branch);
+  assert.equal((await manager.forThread(project, "thread-new")).path, original.path);
+  assert.throws(() => manager.assertRestorable(project, "thread-old", new Set(["thread-new"])), /Another active session is using/);
+  assert.doesNotThrow(() => manager.assertRestorable(project, "thread-old", new Set()));
+
+  await writeFile(path.join(original.path, "still-working.txt"), "preserved\n");
+  await manager.remove(project, "thread-old");
+  assert.ok((await stat(original.path)).isDirectory());
+  assert.equal(manager.recordForThread(project, "thread-old"), null);
+  assert.equal(manager.recordForThread(project, "thread-new")?.path, original.path);
+});
+
 test("a clean session without unmerged commits can remove its worktree and branch", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "comote-projects-"));
   const data = await mkdtemp(path.join(tmpdir(), "comote-data-"));

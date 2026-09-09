@@ -84,6 +84,31 @@ export class WorktreeManager {
     return record;
   }
 
+  async attachContinuation(project: Project, sourceThreadId: string, nextThreadId: string): Promise<WorktreeRecord> {
+    if (!nextThreadId || this.records.has(nextThreadId)) throw new Error("Invalid continuation session id.");
+    const source = this.recordForThread(project, sourceThreadId);
+    if (!source) throw new Error("Only an isolated task session can continue in a fresh session.");
+    await this.validateRecordPath(source);
+    const record: WorktreeRecord = {
+      ...source,
+      threadId: nextThreadId,
+      createdAt: new Date().toISOString(),
+    };
+    this.records.set(nextThreadId, record);
+    try {
+      await this.persist();
+    } catch (error) {
+      this.records.delete(nextThreadId);
+      throw error;
+    }
+    return { ...record };
+  }
+
+  async detach(threadId: string): Promise<void> {
+    if (!this.records.delete(threadId)) return;
+    await this.persist();
+  }
+
   async abort(project: Project, prepared: PreparedWorktree): Promise<void> {
     await git(project.path, ["worktree", "remove", "--force", prepared.path]).catch(() => undefined);
     await git(project.path, ["branch", "-D", prepared.branch]).catch(() => undefined);
@@ -121,6 +146,7 @@ export class WorktreeManager {
     const record = this.recordForThread(project, threadId);
     if (!record) return;
     await this.validateRecordPath(record);
+    if (this.sharedRecords(record).length > 0) return;
 
     const status = await git(record.path, ["status", "--porcelain"]);
     if (status) {
@@ -137,6 +163,11 @@ export class WorktreeManager {
     const record = this.recordForThread(project, threadId);
     if (!record) return;
     await this.assertRemovable(project, threadId);
+    if (this.sharedRecords(record).length > 0) {
+      this.records.delete(threadId);
+      await this.persist();
+      return;
+    }
     await git(project.path, ["worktree", "remove", record.path], 60_000);
     await git(project.path, ["branch", "-D", record.branch]);
     this.records.delete(threadId);
@@ -144,11 +175,18 @@ export class WorktreeManager {
   }
 
   pathsForProject(project: Project): string[] {
-    const paths = [project.path];
+    const paths = new Set([project.path]);
     for (const record of this.records.values()) {
-      if (record.projectId === project.id && this.isManagedPath(record.path)) paths.push(record.path);
+      if (record.projectId === project.id && this.isManagedPath(record.path)) paths.add(record.path);
     }
-    return paths;
+    return [...paths];
+  }
+
+  assertRestorable(project: Project, threadId: string, activeThreadIds: Set<string>): void {
+    const record = this.recordForThread(project, threadId);
+    if (record && this.sharedRecords(record).some((candidate) => activeThreadIds.has(candidate.threadId))) {
+      throw new Error("Another active session is using this task worktree. Archive or delete it before restoring this one.");
+    }
   }
 
   belongsToProject(project: Project, threadId: string, cwd?: unknown): boolean {
@@ -177,6 +215,15 @@ export class WorktreeManager {
     const resolved = path.resolve(value);
     const managedRoot = this.rootRealPath || this.root;
     return resolved.startsWith(`${managedRoot}${path.sep}`);
+  }
+
+  private sharedRecords(record: WorktreeRecord): WorktreeRecord[] {
+    const target = path.resolve(record.path);
+    return [...this.records.values()].filter((candidate) => (
+      candidate.threadId !== record.threadId
+      && candidate.projectId === record.projectId
+      && path.resolve(candidate.path) === target
+    ));
   }
 
   private persist(): Promise<void> {

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadItem } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
@@ -225,6 +225,9 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   const [selectedModel, setSelectedModel] = useState("");
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelBusy, setModelBusy] = useState(false);
+  const [contextUsage, setContextUsage] = useState<ThreadContextUsage | null>(null);
+  const [compacting, setCompacting] = useState(false);
+  const [continuityNotice, setContinuityNotice] = useState("");
   const [git, setGit] = useState<GitState | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -275,6 +278,10 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setMessages([]);
     setActivities([]);
     setApprovals([]);
+    setContextUsage(null);
+    setCompacting(false);
+    setContinuityNotice("");
+    setRunning(false);
     setError("");
     const query = showArchived ? "?archived=true" : "";
     api.get<{ threads: Thread[] }>(`/api/projects/${project.id}/threads${query}`)
@@ -300,6 +307,20 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   }, [project?.id, thread?.id]);
 
   useEffect(() => {
+    setContextUsage(null);
+    if (!project || !thread) return;
+    let current = true;
+    api.get<{ usage: ThreadContextUsage | null }>(`/api/projects/${project.id}/threads/${thread.id}/context`)
+      .then(({ usage }) => {
+        if (current) setContextUsage(usage);
+      })
+      .catch((cause) => {
+        if (current) setError((cause as Error).message);
+      });
+    return () => { current = false; };
+  }, [project?.id, thread?.id]);
+
+  useEffect(() => {
     void refreshGit();
   }, [refreshGit]);
 
@@ -321,6 +342,10 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     } else if (event.type === "item_started" || event.type === "item_completed") {
       const item = event.payload.item as ThreadItem | undefined;
       if (!item) return;
+      if (item.type === "contextCompaction") {
+        setCompacting(event.type === "item_started");
+        if (event.type === "item_completed") setContinuityNotice("Session context compacted successfully. You can continue in the same session.");
+      }
       if (item.type === "agentMessage" && event.type === "item_completed") {
         setMessages((current) => upsertMessage(current, { id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase }));
       }
@@ -340,10 +365,15 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       if (method === "turn/started") setRunning(true);
       if (method === "turn/completed") {
         setRunning(false);
+        setCompacting(false);
         void refreshGit();
       }
+    } else if (event.type === "context_usage") {
+      const usage = event.payload.usage as ThreadContextUsage | undefined;
+      if (usage) setContextUsage(usage);
     } else if (event.type === "error") {
       setRunning(false);
+      setCompacting(false);
       setError(String(event.payload.message ?? "Codex encountered an error."));
     }
   }
@@ -359,6 +389,10 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       setMessages(extracted.messages);
       setActivities(extracted.activities);
       setApprovals([]);
+      setContextUsage(null);
+      setCompacting(false);
+      setContinuityNotice("");
+      setRunning(thread.status?.type === "active");
       setMobilePanel("chat");
     } catch (cause) {
       setError((cause as Error).message);
@@ -378,6 +412,10 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       setMessages([]);
       setActivities([]);
       setApprovals([]);
+      setContextUsage(null);
+      setCompacting(false);
+      setContinuityNotice("");
+      setRunning(false);
       setMobilePanel("chat");
     } catch (cause) {
       setError((cause as Error).message);
@@ -448,8 +486,35 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setMessages([]);
     setActivities([]);
     setApprovals([]);
+    setContextUsage(null);
+    setCompacting(false);
+    setContinuityNotice("");
+    setRunning(false);
     setGit(null);
     setManagingSession(false);
+  }
+
+  function sessionCompacted() {
+    setManagingSession(false);
+    setCompacting(false);
+    setRunning(false);
+    setContinuityNotice("Session context compacted successfully. You can continue in the same session.");
+  }
+
+  function sessionContinued(next: Thread) {
+    const previousId = thread?.id;
+    streamRef.current?.close();
+    setThreads((current) => [next, ...current.filter((item) => item.id !== previousId && item.id !== next.id)]);
+    setThread(next);
+    setMessages([]);
+    setActivities([]);
+    setApprovals([]);
+    setContextUsage(null);
+    setCompacting(false);
+    setContinuityNotice("Handoff complete. This fresh session is using the same task branch and files.");
+    setRunning(true);
+    setManagingSession(false);
+    setMobilePanel("chat");
   }
 
   return (
@@ -511,12 +576,14 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
               <div><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
               <div className="run-states">
                 {git?.isolated && <span className="task-state">Isolated task</span>}
-                <span className={`run-state ${running ? "running" : ""}`}>{running ? "Codex is working" : "Ready"}</span>
+                <ContextMeter usage={contextUsage} disabled={running || busy} onClick={() => setManagingSession(true)} />
+                <span className={`run-state ${running ? "running" : ""}`}>{compacting ? "Compacting" : running ? "Codex is working" : "Ready"}</span>
                 <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
               </div>
             </div>
             <div className="message-scroll">
               {showArchived && <div className="history-notice">This session is archived. Restore it from the session menu before continuing.</div>}
+              {continuityNotice && <button className="history-notice continuity-notice" onClick={() => setContinuityNotice("")}>{continuityNotice}<span aria-hidden="true">×</span></button>}
               {thread.historyUnavailable && <div className="history-notice">This session can continue, but its earlier messages cannot be displayed by the current Codex server.</div>}
               {messages.length === 0 && !thread.historyUnavailable && !showArchived && <StarterCards onChoose={sendMessage} />}
               {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
@@ -546,22 +613,27 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
           project={project}
           thread={thread}
           archived={showArchived}
+          contextUsage={contextUsage}
           onClose={() => setManagingSession(false)}
           onRemoved={() => sessionRemoved(thread.id)}
+          onCompact={sessionCompacted}
+          onHandoff={sessionContinued}
         />
       )}
     </div>
   );
 }
 
-function SessionDialog({ project, thread, archived, onClose, onRemoved }: { project: Project; thread: Thread; archived: boolean; onClose: () => void; onRemoved: () => void }) {
+function SessionDialog({ project, thread, archived, contextUsage, onClose, onRemoved, onCompact, onHandoff }: { project: Project; thread: Thread; archived: boolean; contextUsage: ThreadContextUsage | null; onClose: () => void; onRemoved: () => void; onCompact: () => void; onHandoff: (thread: Thread) => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [action, setAction] = useState<"" | "archive" | "restore" | "delete" | "compact" | "handoff">("");
   const [error, setError] = useState("");
   const title = thread.name || thread.preview || "New session";
 
   async function archiveSession() {
     setBusy(true);
+    setAction("archive");
     setError("");
     try {
       await api.post(`/api/projects/${project.id}/threads/${thread.id}/archive`);
@@ -574,6 +646,7 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
 
   async function restoreSession() {
     setBusy(true);
+    setAction("restore");
     setError("");
     try {
       await api.post(`/api/projects/${project.id}/threads/${thread.id}/unarchive`);
@@ -586,6 +659,7 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
 
   async function deleteSession() {
     setBusy(true);
+    setAction("delete");
     setError("");
     try {
       await api.post(`/api/projects/${project.id}/threads/${thread.id}/delete`);
@@ -593,6 +667,34 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
     } catch (cause) {
       setError((cause as Error).message);
       setBusy(false);
+    }
+  }
+
+  async function compactSession() {
+    setBusy(true);
+    setAction("compact");
+    setError("");
+    try {
+      await api.post(`/api/projects/${project.id}/threads/${thread.id}/compact`);
+      onCompact();
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+      setAction("");
+    }
+  }
+
+  async function continueSession() {
+    setBusy(true);
+    setAction("handoff");
+    setError("");
+    try {
+      const result = await api.post<{ thread: Thread; summary: string }>(`/api/projects/${project.id}/threads/${thread.id}/continue`);
+      onHandoff(result.thread);
+    } catch (cause) {
+      setError((cause as Error).message);
+      setBusy(false);
+      setAction("");
     }
   }
 
@@ -611,7 +713,7 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
             {error && <p className="form-error">{error}</p>}
             <div className="dialog-actions">
               <button className="secondary" type="button" onClick={() => { setConfirmDelete(false); setError(""); }} disabled={busy}>Back</button>
-              <button className="danger-button" type="button" onClick={deleteSession} disabled={busy}>{busy ? "Deleting…" : "Delete permanently"}</button>
+              <button className="danger-button" type="button" onClick={deleteSession} disabled={busy}>{action === "delete" ? "Deleting…" : "Delete permanently"}</button>
             </div>
           </>
         ) : (
@@ -619,14 +721,29 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
             <div className="session-option-list">
               {archived ? (
                 <button type="button" onClick={restoreSession} disabled={busy}>
-                  <strong>{busy ? "Restoring…" : "Restore session"}</strong>
+                  <strong>{action === "restore" ? "Restoring…" : "Restore session"}</strong>
                   <span>Return it to the active session list and continue working.</span>
                 </button>
               ) : (
-                <button type="button" onClick={archiveSession} disabled={busy}>
-                  <strong>{busy ? "Archiving…" : "Archive session"}</strong>
-                  <span>Hide it from the session list while preserving the conversation and project workspace.</span>
-                </button>
+                <>
+                  <div className={`context-card ${contextTone(contextUsage)}`}>
+                    <div><strong>Context usage</strong><span>{contextUsage ? `${contextUsage.percentage}%` : "Waiting for usage data"}</span></div>
+                    <div className="context-track" aria-hidden="true"><span style={{ width: `${contextUsage?.percentage ?? 0}%` }} /></div>
+                    <small>{contextGuidance(contextUsage)}</small>
+                  </div>
+                  <button type="button" onClick={compactSession} disabled={busy}>
+                    <strong>{action === "compact" ? "Compacting session…" : "Compact current session"}</strong>
+                    <span>Compress older context and keep working in this same session, branch, and files.</span>
+                  </button>
+                  <button type="button" onClick={continueSession} disabled={busy}>
+                    <strong>{action === "handoff" ? "Preparing summary and fresh session…" : "Continue in fresh session"}</strong>
+                    <span>Create a summary, move to a clean conversation, and keep the exact same task worktree. The old session is archived.</span>
+                  </button>
+                  <button type="button" onClick={archiveSession} disabled={busy}>
+                    <strong>{action === "archive" ? "Archiving…" : "Archive session"}</strong>
+                    <span>Hide it from the session list while preserving the conversation and project workspace.</span>
+                  </button>
+                </>
               )}
               <button className="danger-option" type="button" onClick={() => setConfirmDelete(true)} disabled={busy}>
                 <strong>Delete permanently</strong>
@@ -640,6 +757,30 @@ function SessionDialog({ project, thread, archived, onClose, onRemoved }: { proj
       </section>
     </div>
   );
+}
+
+function ContextMeter({ usage, disabled, onClick }: { usage: ThreadContextUsage | null; disabled: boolean; onClick: () => void }) {
+  const label = usage ? `Context ${usage.percentage}%` : "Context —";
+  return (
+    <button className={`context-meter ${contextTone(usage)}`} type="button" disabled={disabled} onClick={onClick} title={`${contextGuidance(usage)} Open session continuity options.`} aria-label={`${label}. ${contextGuidance(usage)}`}>
+      <span className="context-meter-ring" style={{ "--context-progress": `${usage?.percentage ?? 0}%` } as CSSProperties} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function contextTone(usage: ThreadContextUsage | null): "unknown" | "safe" | "watch" | "high" {
+  if (!usage) return "unknown";
+  if (usage.percentage >= 85) return "high";
+  if (usage.percentage >= 70) return "watch";
+  return "safe";
+}
+
+function contextGuidance(usage: ThreadContextUsage | null): string {
+  if (!usage) return "Usage appears after Codex completes a turn.";
+  if (usage.percentage >= 85) return "Context is high. Compact now or continue in a fresh session.";
+  if (usage.percentage >= 70) return "Context is growing. Consider compacting after the next milestone.";
+  return "Context has comfortable room remaining.";
 }
 
 function Brand({ large = false }: { large?: boolean }) {

@@ -4,6 +4,7 @@ import { createInterface } from "node:readline";
 import { withoutComoteEnvironment } from "./child-environment.js";
 import type { ComoteConfig } from "./config.js";
 import { EventHub } from "./event-hub.js";
+import { parseThreadContextUsage, type ThreadUsageStore } from "./thread-usage.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -29,6 +30,16 @@ interface ApprovalRequest {
   params: JsonObject;
 }
 
+interface OperationWaiter<T> {
+  resolve: (value: T) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+}
+
+interface TurnWaiter extends OperationWaiter<string> {
+  agentText: string;
+}
+
 export class CodexClient {
   private process: ChildProcessWithoutNullStreams | null = null;
   private starting: Promise<void> | null = null;
@@ -36,11 +47,14 @@ export class CodexClient {
   private pending = new Map<number, PendingRequest>();
   private approvals = new Map<string, ApprovalRequest>();
   private loadedThreads = new Set<string>();
+  private compactionWaiters = new Map<string, OperationWaiter<void>>();
+  private turnWaiters = new Map<string, TurnWaiter>();
   private idleTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly config: ComoteConfig,
     readonly events: EventHub,
+    private readonly usage?: ThreadUsageStore,
   ) {}
 
   async listThreads(cwd?: string | string[], archived = false): Promise<JsonObject[]> {
@@ -116,6 +130,66 @@ export class CodexClient {
     await this.request("turn/interrupt", { threadId });
   }
 
+  async compactThread(threadId: string, waitForCompletion = false): Promise<void> {
+    if (!waitForCompletion) {
+      await this.request("thread/compact/start", { threadId });
+      return;
+    }
+    if (this.compactionWaiters.has(threadId) || this.turnWaiters.has(threadId)) {
+      throw new Error("A session operation is already in progress.");
+    }
+    const completion = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.compactionWaiters.delete(threadId);
+        reject(new Error("Session compaction timed out."));
+      }, 5 * 60_000);
+      this.compactionWaiters.set(threadId, { resolve, reject, timer });
+    });
+    try {
+      await this.request("thread/compact/start", { threadId });
+    } catch (error) {
+      this.rejectCompaction(threadId, error as Error);
+      throw error;
+    }
+    await completion;
+  }
+
+  async summarizeThread(
+    threadId: string,
+    cwd: string,
+    deviceName: string,
+    writableRoots: string[],
+    model = "",
+  ): Promise<string> {
+    if (this.turnWaiters.has(threadId) || this.compactionWaiters.has(threadId)) {
+      throw new Error("A session operation is already in progress.");
+    }
+    const completion = new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.turnWaiters.delete(threadId);
+        reject(new Error("Session handoff summary timed out."));
+      }, 5 * 60_000);
+      this.turnWaiters.set(threadId, { resolve, reject, timer, agentText: "" });
+    });
+    const prompt = [
+      "Prepare a concise handoff summary for a fresh Codex session that will continue in this exact Git worktree.",
+      "Use only the conversation context you already have. Do not call tools, run commands, edit files, commit, or push.",
+      "Include: objective, important decisions and constraints, completed work, current implementation state, pending work, verification already performed, known risks, and the single best next action.",
+      "Mention important file paths when they are known. Return only the handoff summary in clear Markdown, under 1,200 words.",
+    ].join("\n");
+    try {
+      await this.startTurn(threadId, cwd, prompt, deviceName, writableRoots, model);
+    } catch (error) {
+      this.rejectTurnWaiter(threadId, error as Error);
+      throw error;
+    }
+    return completion;
+  }
+
+  async setThreadName(threadId: string, name: string): Promise<void> {
+    await this.request("thread/name/set", { threadId, name });
+  }
+
   async archiveThread(threadId: string): Promise<void> {
     await this.request("thread/archive", { threadId });
     this.loadedThreads.delete(threadId);
@@ -153,6 +227,7 @@ export class CodexClient {
     this.starting = null;
     this.loadedThreads.clear();
     this.approvals.clear();
+    this.failOperations(new Error("Codex stopped."));
   }
 
   private async ensureThreadLoaded(threadId: string, cwd: string): Promise<void> {
@@ -191,7 +266,9 @@ export class CodexClient {
         reject(error);
       });
       child.once("exit", (code, signal) => {
-        this.failAll(new Error(`Codex stopped (${signal ?? code ?? "unknown"}).`));
+        const error = new Error(`Codex stopped (${signal ?? code ?? "unknown"}).`);
+        this.failAll(error);
+        this.failOperations(error);
         this.process = null;
         this.starting = null;
         this.loadedThreads.clear();
@@ -295,16 +372,79 @@ export class CodexClient {
         text: params.delta ?? "",
       });
     } else if (method === "item/started" || method === "item/completed") {
+      const item = (params.item ?? {}) as JsonObject;
+      if (method === "item/completed" && item.type === "contextCompaction") {
+        const compaction = this.compactionWaiters.get(threadId);
+        if (compaction) {
+          clearTimeout(compaction.timer);
+          this.compactionWaiters.delete(threadId);
+          compaction.resolve();
+        }
+      }
+      if (method === "item/completed" && item.type === "agentMessage") {
+        const waiter = this.turnWaiters.get(threadId);
+        if (waiter && typeof item.text === "string") waiter.agentText = item.text;
+      }
       this.events.publish(threadId, method === "item/started" ? "item_started" : "item_completed", {
         item: params.item,
       });
     } else if (method === "turn/started" || method === "turn/completed" || method === "thread/status/changed") {
       this.events.publish(threadId, "status", { method, ...params });
+      if (method === "turn/completed") this.completeSessionOperation(threadId, params);
+    } else if (method === "thread/tokenUsage/updated") {
+      const parsed = parseThreadContextUsage(params);
+      if (parsed) {
+        this.events.publish(threadId, "context_usage", { usage: parsed });
+        void this.usage?.set(threadId, parsed).catch((error: Error) => {
+          console.error(`Could not persist Codex context usage: ${error.message}`);
+        });
+      }
     } else if (method === "turn/diff/updated") {
       this.events.publish(threadId, "diff_updated", params);
     } else if (method === "error") {
-      this.events.publish(threadId, "error", { message: extractError(params.error ?? params) });
+      const error = new Error(extractError(params.error ?? params));
+      this.rejectCompaction(threadId, error);
+      this.rejectTurnWaiter(threadId, error);
+      this.events.publish(threadId, "error", { message: error.message });
     }
+  }
+
+  private completeSessionOperation(threadId: string, params: JsonObject): void {
+    const turn = (params.turn ?? {}) as JsonObject;
+    const status = typeof turn.status === "string" ? turn.status : "completed";
+    const failed = status !== "completed";
+    const error = failed
+      ? new Error(extractError((turn.error as JsonObject | undefined) ?? `Session operation ${status}.`))
+      : null;
+
+    const waiter = this.turnWaiters.get(threadId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    this.turnWaiters.delete(threadId);
+    if (error) waiter.reject(error);
+    else if (!waiter.agentText.trim()) waiter.reject(new Error("Codex returned an empty handoff summary."));
+    else waiter.resolve(waiter.agentText.trim());
+  }
+
+  private rejectCompaction(threadId: string, error: Error): void {
+    const waiter = this.compactionWaiters.get(threadId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    this.compactionWaiters.delete(threadId);
+    waiter.reject(error);
+  }
+
+  private rejectTurnWaiter(threadId: string, error: Error): void {
+    const waiter = this.turnWaiters.get(threadId);
+    if (!waiter) return;
+    clearTimeout(waiter.timer);
+    this.turnWaiters.delete(threadId);
+    waiter.reject(error);
+  }
+
+  private failOperations(error: Error): void {
+    for (const [threadId] of this.compactionWaiters) this.rejectCompaction(threadId, error);
+    for (const [threadId] of this.turnWaiters) this.rejectTurnWaiter(threadId, error);
   }
 
   private touch(): void {
