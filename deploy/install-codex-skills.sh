@@ -11,5 +11,5 @@ if [[ ! -f "$source_dir/SKILL.md" ]]; then
 fi
 
 /usr/bin/install -d -m 0700 "$skills_dir" "$target_dir"
-/bin/cp -a "$source_dir/." "$target_dir/"
+/bin/cp -R "$source_dir/." "$target_dir/"
 /usr/bin/chmod -R u=rwX,go= "$target_dir"
