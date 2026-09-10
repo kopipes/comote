@@ -1,6 +1,6 @@
 [Unit]
 Description=Comote secure coding workspace
-After=network-online.target
+After=network-online.target apparmor.service
 Wants=network-online.target
 
 [Service]

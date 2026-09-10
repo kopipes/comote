@@ -90,4 +90,6 @@ Comote records context usage reported by Codex and exposes native conversation c
 
 The core UI/UX design skill is installed globally by the service `ExecStartPre` step. It remains part of Comote infrastructure, not an application repository. Search results guide the code Codex generates; the skill source, catalogs, and scripts are never copied into project workspaces.
 
+Ubuntu's global AppArmor restriction for unprivileged user namespaces remains enabled. The deployment installs `deploy/comote-codex.apparmor`, a narrowly attached profile for the versioned Codex executable only, so its bubblewrap turn sandbox can create the user namespace it requires without opening that permission system-wide.
+
 The repository uses `https://github.com/kopipes/comote.git` as its off-VPS Git remote. The VPS workspace uses a dedicated, repository-scoped SSH deploy key; that key must be registered on GitHub with write access before the explicit Push action can authenticate.

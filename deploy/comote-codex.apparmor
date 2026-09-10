@@ -1,0 +1,12 @@
+# Allow only the versioned Codex executable tree to create the user namespace
+# that bubblewrap needs for its per-turn sandbox. Ubuntu keeps the global
+# unprivileged-user-namespace restriction enabled.
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile comote-codex /home/coder/.codex/packages/standalone/releases/*/bin/codex flags=(unconfined) {
+  userns,
+
+  include if exists <local/comote-codex>
+}
