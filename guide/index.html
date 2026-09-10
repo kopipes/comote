@@ -138,6 +138,47 @@
         <article class="explain-card"><h3>Rapikan session</h3><p>Tekan tombol <b>•••</b> pada session. <b>Archive</b> menyembunyikannya tanpa menghapus pekerjaan dan dapat dipulihkan dari daftar <b>Archived</b>. <b>Delete permanently</b> hanya berhasil bila tidak ada file belum di-commit atau commit yang belum di-merge.</p></article>
         <article class="explain-card"><h3>Design UI/UX lebih kaya</h3><p>Codex di Comote memiliki design intelligence global untuk memilih pola layout, warna, tipografi, responsive behavior, accessibility, dan stack-specific UI. Yang masuk repository aplikasi hanya hasil implementasinya—bukan skill atau database referensinya.</p></article>
       </div>
+
+      <div class="session-guide" id="session">
+        <div class="section-heading light">
+          <div><p class="eyebrow">Session panjang</p><h2>Compact atau pindah ke fresh session?</h2></div>
+          <p>Klik indikator <b>Context</b> atau tombol <b>•••</b> di atas chat untuk membuka kedua pilihan.</p>
+        </div>
+        <div class="context-levels" aria-label="Arti warna indikator context">
+          <div class="context-level safe"><span></span><strong>Hijau · di bawah 70%</strong><small>Masih lega. Lanjutkan pekerjaan seperti biasa.</small></div>
+          <div class="context-level watch"><span></span><strong>Kuning · 70–84%</strong><small>Selesaikan milestone kecil, lalu pertimbangkan Compact.</small></div>
+          <div class="context-level high"><span></span><strong>Merah · 85% ke atas</strong><small>Compact sekarang atau pindah ke fresh session.</small></div>
+        </div>
+        <div class="continuity-choices">
+          <article>
+            <p class="eyebrow">Pilihan 1</p>
+            <h3>Compact current session</h3>
+            <p>Pilih ini bila topiknya masih sama dan Anda ingin tetap melihat satu percakapan. Comote meminta Codex memadatkan context lama tanpa mengganti session, model, branch, worktree, atau file.</p>
+            <ol>
+              <li>Tunggu Codex selesai bekerja sampai status kembali <b>Ready</b>.</li>
+              <li>Klik <b>Context</b> atau <b>•••</b>.</li>
+              <li>Pilih <b>Compact current session</b> dan tunggu proses selesai.</li>
+              <li>Lanjutkan dengan kalimat biasa pada chat yang sama.</li>
+            </ol>
+          </article>
+          <article>
+            <p class="eyebrow">Pilihan 2</p>
+            <h3>Continue in fresh session</h3>
+            <p>Pilih ini setelah percakapan sangat panjang atau saat memasuki fase kerja baru. Comote membuat AI handoff summary, membuka session baru pada task worktree yang sama, mempertahankan pilihan model, dan mengarsipkan session lama.</p>
+            <ol>
+              <li>Buat commit checkpoint bila sudah mencapai milestone; ini dianjurkan, tetapi file yang belum di-commit tetap dipertahankan.</li>
+              <li>Klik <b>Continue in fresh session</b>.</li>
+              <li>Tunggu sampai session baru tampil dan Codex mengakui ringkasan pekerjaan lama.</li>
+              <li>Kirim instruksi berikutnya—tidak perlu menjelaskan ulang seluruh project.</li>
+            </ol>
+          </article>
+        </div>
+        <div class="tip continuity-tip"><strong>Catatan keamanan worktree:</strong> session lama dan session baru menunjuk ke file task yang sama. Karena itu Comote tidak mengizinkan keduanya aktif bersamaan. Jika ingin memulihkan session lama, arsipkan atau hapus session lanjutan terlebih dahulu.</div>
+        <div class="uiux-guide">
+          <div><p class="eyebrow">Design intelligence</p><h3>UI/UX bekerja otomatis dari prompt Anda</h3><p>Anda tidak perlu memasang atau menyalin skill ke project. Saat permintaan menyangkut tampilan, Codex dapat memakai referensi global untuk layout, warna, tipografi, accessibility, responsive behavior, dan framework yang sedang digunakan. Repository aplikasi hanya menyimpan hasil implementasi.</p></div>
+          <div class="prompt-list"><button type="button" data-copy="Buat dashboard ini terasa premium dan mudah dipakai dari HP. Gunakan design system yang konsisten, periksa accessibility, lalu test responsive layout.">“Buat dashboard ini terasa premium dan mudah dipakai dari HP. Gunakan design system yang konsisten, periksa accessibility, lalu test responsive layout.”</button><button type="button" data-copy="Audit UI/UX halaman ini. Perbaiki hierarchy, spacing, warna, touch target, empty state, dan tampilan mobile tanpa mengubah fungsi bisnis.">“Audit UI/UX halaman ini. Perbaiki hierarchy, spacing, warna, touch target, empty state, dan tampilan mobile tanpa mengubah fungsi bisnis.”</button><p class="copy-note" aria-live="polite"></p></div>
+        </div>
+      </div>
     </section>
 
     <section id="github">
@@ -211,6 +252,8 @@
         <details><summary>Preview tidak mau berjalan</summary><p>Minta Codex memasang dependency dan memastikan <code>package.json</code> memiliki script <code>dev</code> atau <code>start</code>. Baca Preview logs untuk detail.</p></details>
         <details><summary>Deploy production gagal</summary><p>Pastikan canonical branch bersih, dependency memiliki <code>package-lock.json</code>, required secret sudah disimpan, dan health check aplikasi berhasil.</p></details>
         <details><summary>Ada conflict saat Merge</summary><p>Jangan memaksa merge. Kembali ke session task dan minta: “Selesaikan conflict dengan main, jalankan test, lalu commit hasilnya.”</p></details>
+        <details><summary>Indikator masih menampilkan Context —</summary><p>Ini normal untuk session lama yang belum memiliki data usage tersimpan. Kirim satu pesan dan tunggu Codex menyelesaikan jawabannya; persentase akan muncul setelah event token usage diterima.</p></details>
+        <details><summary>Kapan memakai Compact dan kapan fresh session?</summary><p>Gunakan <b>Compact</b> bila masih mengerjakan topik yang sama. Gunakan <b>Continue in fresh session</b> bila percakapan sudah sangat panjang, indikator merah, atau Anda mulai fase kerja baru tetapi ingin mempertahankan branch dan semua file.</p></details>
         <details><summary>Tidak sengaja membuat session baru</summary><p>Buka session tersebut, tekan <b>•••</b>, lalu pilih <b>Delete permanently</b>. Untuk session yang mungkin masih diperlukan, pilih <b>Archive session</b> agar dapat dipulihkan kemudian.</p></details>
       </div>
     </section>
