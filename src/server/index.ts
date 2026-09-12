@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import helmet from "helmet";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AttachmentStore } from "./attachments.js";
 import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
 import { CheckManager } from "./checks.js";
@@ -14,7 +15,9 @@ import { NotificationSettingsStore } from "./notification-settings.js";
 import { NotificationService } from "./notifications.js";
 import { PingClient } from "./ping.js";
 import { PreviewManager } from "./preview.js";
+import { ProjectNotesStore } from "./project-notes.js";
 import { ProjectRegistry, type Project } from "./projects.js";
+import { buildCodexInput } from "./prompt-context.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
 import { WorktreeManager, type ThreadWorkspace } from "./worktrees.js";
 import { ThreadModelStore } from "./thread-models.js";
@@ -35,6 +38,8 @@ const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const otp = new OtpStore();
 const ping = new PingClient(config.pingWebhookUrl, config.pingWebhookToken, config.otpEmail);
 const notificationSettings = new NotificationSettingsStore(config.dataDir);
+const projectNotes = new ProjectNotesStore(config.dataDir);
+const attachments = new AttachmentStore(config.dataDir);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
 const previews = new PreviewManager(config.previewPort, config.previewUrl);
@@ -49,7 +54,7 @@ const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
 const mergingProjects = new Set<string>();
 const handoffThreads = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init(), notificationSettings.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init(), notificationSettings.init(), projectNotes.init(), attachments.init()]);
 deployments.subscribe((project, state, action) => notifications.deploymentFinished(project.name, state, action));
 
 const app = express();
@@ -201,6 +206,16 @@ app.post("/api/projects/:projectId/settings/remote", requireCsrf, async (request
   response.json(await projects.setGithubRemote(param(request, "projectId"), repositoryUrl));
 });
 
+app.get("/api/projects/:projectId/notes", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  response.json({ notes: projectNotes.get(project.id) });
+});
+
+app.post("/api/projects/:projectId/notes", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  response.json({ notes: await projectNotes.set(project.id, request.body?.notes) });
+});
+
 app.get("/api/projects/:projectId/threads", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   const archived = queryString(request, "archived") === "true";
@@ -303,7 +318,11 @@ app.post("/api/projects/:projectId/threads/:threadId/continue", requireCsrf, asy
     await codex.setThreadName(nextThreadId, nextTitle).catch(() => undefined);
     await codex.archiveThread(threadId);
     oldArchived = true;
-    const seed = buildContinuationSeed(oldTitle, summary, repository.branch, repository.status);
+    const seed = buildCodexInput(
+      buildContinuationSeed(oldTitle, summary, repository.branch, repository.status),
+      projectNotes.get(project.id),
+      [],
+    );
     notifications.trackTurn(nextThreadId, project.name);
     try {
       await codex.startTurn(
@@ -363,6 +382,29 @@ app.post("/api/projects/:projectId/threads/:threadId/delete", requireCsrf, async
   await worktrees.remove(project, threadId);
   await threadModels.remove(threadId);
   await threadUsage.remove(threadId);
+  await attachments.removeThread(project.id, threadId).catch((error: Error) => console.error(`Could not remove session attachments: ${error.message}`));
+  response.status(204).end();
+});
+
+app.post(
+  "/api/projects/:projectId/threads/:threadId/attachments",
+  requireCsrf,
+  express.raw({ type: "application/octet-stream", limit: "10mb" }),
+  async (request, response) => {
+    const project = await projects.get(param(request, "projectId"));
+    const threadId = param(request, "threadId");
+    await resolveThread(project, threadId);
+    if (!Buffer.isBuffer(request.body)) throw new Error("Invalid attachment body.");
+    const attachment = await attachments.save(project.id, threadId, request.headers["x-comote-file-name"], request.body);
+    response.status(201).json({ attachment });
+  },
+);
+
+app.post("/api/projects/:projectId/threads/:threadId/attachments/:attachmentId/delete", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = param(request, "threadId");
+  await resolveThread(project, threadId);
+  await attachments.remove(project.id, threadId, param(request, "attachmentId"));
   response.status(204).end();
 });
 
@@ -375,13 +417,15 @@ app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, asy
     response.status(400).json({ error: "Message must be 1–20,000 characters." });
     return;
   }
+  const messageAttachments = await attachments.resolve(project.id, threadId, request.body?.attachments);
+  const codexInput = buildCodexInput(text, projectNotes.get(project.id), messageAttachments);
   notifications.trackTurn(threadId, project.name);
   let turn: Record<string, unknown>;
   try {
     turn = await codex.startTurn(
       threadId,
       workspace.path,
-      text,
+      codexInput,
       request.comoteSession!.deviceName,
       workspace.writableRoots,
       threadModels.get(threadId),
@@ -566,6 +610,10 @@ if (config.production) {
 }
 
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
+  if ((error as { status?: unknown })?.status === 413) {
+    response.status(413).json({ error: "Attachment must be 10 MB or smaller." });
+    return;
+  }
   const message = error instanceof Error ? error.message : "Unexpected error.";
   const status = errorStatus(message);
   if (status >= 500) console.error(error);
@@ -640,7 +688,7 @@ function errorStatus(message: string): number {
   if (message.startsWith("Ping is not configured") || message.startsWith("Ping OTP is not configured") || message.startsWith("Preview is not configured") || message.startsWith("Production deployment is not configured")) return 503;
   if (message.startsWith("Ping delivery") || message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") || message.startsWith("Git operation failed")) return 502;
   if (message.startsWith("A deployment is already in progress") || message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") || message.startsWith("Session has")) return 409;
-  if (message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") || message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") || message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs")) return 400;
+  if (message.startsWith("Invalid") || message.startsWith("Unsupported attachment") || message.startsWith("Attachment must") || message.startsWith("Session attachments") || message.startsWith("Project notes must") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") || message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") || message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs")) return 400;
   return 500;
 }
 

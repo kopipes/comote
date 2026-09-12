@@ -70,6 +70,7 @@ export interface PreviewState {
   command: string;
   logs: string;
   startedAt: string;
+  error: string;
 }
 
 export interface CheckStep {
@@ -96,6 +97,12 @@ export interface NotificationPreferences {
   approvalRequired: boolean;
   checkFailed: boolean;
   deploymentResult: boolean;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
 }
 
 export interface DeploymentState {
@@ -146,6 +153,18 @@ export class ApiClient {
         "x-comote-csrf": this.csrf,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  async upload<T>(path: string, file: File): Promise<T> {
+    return this.request<T>(path, {
+      method: "POST",
+      headers: {
+        "content-type": "application/octet-stream",
+        "x-comote-csrf": this.csrf,
+        "x-comote-file-name": encodeURIComponent(file.name),
+      },
+      body: file,
     });
   }
 

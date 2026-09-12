@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
+import { api, type Attachment, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
 import { CheckPanel } from "./CheckPanel";
 import { Composer, draftStorageKey } from "./Composer";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
@@ -439,14 +439,15 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     }
   }
 
-  async function sendMessage(text: string): Promise<boolean> {
+  async function sendMessage(text: string, attachments: Attachment[] = []): Promise<boolean> {
     if (!project || !thread) return false;
     const optimisticId = `local-${Date.now()}`;
-    setMessages((current) => [...current, { id: optimisticId, role: "user", text }]);
+    const displayText = attachments.length ? `${text}\n\nAttached: ${attachments.map((attachment) => attachment.name).join(", ")}` : text;
+    setMessages((current) => [...current, { id: optimisticId, role: "user", text: displayText }]);
     setRunning(true);
     setError("");
     try {
-      await api.post(`/api/projects/${project.id}/threads/${thread.id}/messages`, { text });
+      await api.post(`/api/projects/${project.id}/threads/${thread.id}/messages`, { text, attachments: attachments.map((attachment) => attachment.id) });
       return true;
     } catch (cause) {
       setRunning(false);
@@ -615,7 +616,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
               {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={decide} />)}
               {running && <div className="thinking"><span /><span /><span /> Codex is working</div>}
             </div>
-            {!showArchived && <Composer key={draftStorageKey(project!.id, thread.id)} draftKey={draftStorageKey(project!.id, thread.id)} disabled={running} onSend={sendMessage} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
+            {!showArchived && <Composer key={draftStorageKey(project!.id, thread.id)} projectId={project!.id} threadId={thread.id} draftKey={draftStorageKey(project!.id, thread.id)} disabled={running} onSend={sendMessage} onError={setError} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
           </>
         )}
       </main>
@@ -922,6 +923,10 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [projectSuccess, setProjectSuccess] = useState("");
+  const [notes, setNotes] = useState("");
+  const [notesBusy, setNotesBusy] = useState(false);
+  const [notesError, setNotesError] = useState("");
+  const [notesSuccess, setNotesSuccess] = useState("");
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
   const [notificationBusy, setNotificationBusy] = useState(true);
@@ -949,6 +954,13 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
       })
       .catch((cause) => setProjectError((cause as Error).message))
       .finally(() => setProjectBusy(false));
+    setNotesBusy(true);
+    setNotesError("");
+    setNotesSuccess("");
+    api.get<{ notes: string }>(`/api/projects/${project.id}/notes`)
+      .then((result) => setNotes(result.notes))
+      .catch((cause) => setNotesError((cause as Error).message))
+      .finally(() => setNotesBusy(false));
   }, [project]);
 
   async function submit(event: FormEvent) {
@@ -1009,7 +1021,24 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
     }
   }
 
-  const busy = passwordBusy || projectBusy || notificationBusy;
+  async function saveNotes(event: FormEvent) {
+    event.preventDefault();
+    if (!project) return;
+    setNotesBusy(true);
+    setNotesError("");
+    setNotesSuccess("");
+    try {
+      const result = await api.post<{ notes: string }>(`/api/projects/${project.id}/notes`, { notes });
+      setNotes(result.notes);
+      setNotesSuccess(result.notes ? "Project notes saved." : "Project notes cleared.");
+    } catch (cause) {
+      setNotesError((cause as Error).message);
+    } finally {
+      setNotesBusy(false);
+    }
+  }
+
+  const busy = passwordBusy || projectBusy || notificationBusy || notesBusy;
 
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => {
@@ -1059,6 +1088,20 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
             <button className="secondary" type="button" onClick={onClose} disabled={busy}>Close</button>
             <button className="primary" disabled={passwordBusy || !currentPassword || newPassword.length < 12 || !confirmation}>{passwordBusy ? "Saving…" : "Change password"}</button>
           </div>
+        </form>
+        <form className="settings-form settings-section" onSubmit={saveNotes}>
+          <h3>Project notes</h3>
+          {project ? (
+            <>
+              <p className="field-help">Persistent goals, conventions, and constraints for {project.name}. Comote privately supplies these notes to Codex; they are not added to the app repository.</p>
+              <div className="built-in-note"><strong>Safe VPS deploy · always active</strong><span>Before VPS changes, Codex must inventory services, ports, process managers/containers, proxy, disk, and memory; isolate the app; protect existing processes; and prepare health checks, backup, and rollback.</span></div>
+              <label>Instructions and context<textarea rows={6} maxLength={10_000} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Example: Use Indonesian copy, mobile-first layout, and SQLite for local data." /></label>
+              <p className="field-help">{notes.length.toLocaleString()} / 10,000 characters</p>
+              {notesError && <p className="form-error">{notesError}</p>}
+              {notesSuccess && <p className="form-success">{notesSuccess}</p>}
+              <div className="dialog-actions"><button className="primary" disabled={notesBusy}>{notesBusy ? "Saving…" : "Save project notes"}</button></div>
+            </>
+          ) : <p className="field-help">Select a project to add persistent notes.</p>}
         </form>
         <form className="settings-form settings-section" onSubmit={saveRemote}>
           <h3>Project Git remote</h3>
@@ -1309,6 +1352,16 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
     }
   }
 
+  async function fixOperationalLogs(kind: "preview" | "deployment", logs: string) {
+    if (!thread || !logs) return;
+    setBusy(true);
+    try {
+      await onAskCodex(buildOperationalFixPrompt(kind, logs));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="changes-content">
       <div className="pane-heading"><span>Changes</span><button className="text-button" onClick={() => onRefresh()} disabled={!project}>Refresh</button></div>
@@ -1329,15 +1382,16 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
             <button className="secondary full" onClick={push} disabled={busy}>{git?.isolated ? "Push task branch" : "Push branch"}</button>
           </div>
           <div className="preview-box">
-            <div><span className="eyebrow">Private preview</span><strong>{preview?.selected ? "This task is live" : preview?.running ? "Another task is live" : "Not running"}</strong></div>
+            <div><span className="eyebrow">Private preview</span><strong>{preview?.selected ? "This task is live" : preview?.error ? "Last preview failed" : preview?.running ? "Another task is live" : "Not running"}</strong></div>
             {preview?.selected ? (
               <div className="preview-actions">
                 <a className="primary" href={preview.url} target="_blank" rel="noreferrer">Open preview</a>
                 <button className="secondary" onClick={stopPreview} disabled={busy}>Stop</button>
               </div>
             ) : <button className="secondary full" onClick={startPreview} disabled={busy || !thread}>{preview?.running ? "Replace with this task" : "Start preview"}</button>}
-            {preview?.selected && preview.command && <code>{preview.command}</code>}
-            {preview?.selected && preview.logs && <details><summary>Preview logs</summary><pre>{preview.logs}</pre></details>}
+            {preview?.command && <code>{preview.command}</code>}
+            {preview?.logs && <details open={Boolean(preview.error)}><summary>Preview logs</summary><pre>{preview.logs}</pre></details>}
+            {preview?.error && <button className="secondary full" onClick={() => void fixOperationalLogs("preview", `${preview.error}\n${preview.logs}`)} disabled={busy || agentBusy || !thread}>Fix preview with Codex</button>}
             {!thread && <p>Select a task before starting its preview.</p>}
           </div>
           <div className="deployment-box">
@@ -1370,6 +1424,7 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
                 {deployment.previousRelease && <button className="text-button" onClick={rollbackProduction} disabled={busy || deployment.phase !== "deployed"}>Rollback previous release</button>}
                 {deployment.release && <code>{deployment.kind} · {deployment.release}</code>}
                 {deployment.logs && <details open={deployment.phase === "failed"}><summary>Deployment logs</summary><pre>{deployment.logs}</pre></details>}
+                {deployment.phase === "failed" && deployment.logs && <button className="secondary full" onClick={() => void fixOperationalLogs("deployment", deployment.logs)} disabled={busy || agentBusy || !thread}>Fix deploy with Codex</button>}
               </>
             ) : <p>{deployment?.disabledReason || "Production deployment is not configured on this server."}</p>}
           </div>
@@ -1411,6 +1466,27 @@ function parseSecretDraft(value: string): Record<string, string> {
   return result;
 }
 
+export function buildOperationalFixPrompt(kind: "preview" | "deployment", logs: string): string {
+  const redacted = redactOperationalLogs(logs).slice(-14_000);
+  const label = kind === "preview" ? "private preview" : "production deployment";
+  return [
+    `Investigate and fix the ${label} failure shown below.`,
+    "Inspect the project and relevant configuration, make the smallest safe code/config changes, and run the appropriate checks. Do not weaken tests or security controls.",
+    kind === "deployment" ? "Follow Comote's safe VPS deployment rule: protect unrelated apps and processes, avoid port/service conflicts, and preserve rollback." : "Do not start or stop unrelated server processes.",
+    "",
+    `## Redacted ${label} logs`,
+    redacted || "No log output was captured.",
+  ].join("\n");
+}
+
+function redactOperationalLogs(value: string): string {
+  return value
+    .replace(/\b(authorization\s*:\s*bearer\s+)[^\s]+/gi, "$1[REDACTED]")
+    .replace(/\b([A-Z_][A-Z0-9_]{1,63}\s*=\s*)[^\s]+/g, "$1[REDACTED]")
+    .replace(/(https?:\/\/[^\s:/]+:)[^@\s]+@/gi, "$1[REDACTED]@")
+    .replace(/\b(?:ghp|github_pat|sk|xox[baprs])[-_A-Za-z0-9]{12,}\b/g, "[REDACTED_TOKEN]");
+}
+
 function EmptySmall({ text }: { text: string }) {
   return <p className="empty-small">{text}</p>;
 }
@@ -1422,7 +1498,7 @@ function extractHistory(thread: Thread): { messages: ChatMessage[]; activities: 
     for (const item of turn.items ?? []) {
       if (item.type === "userMessage") {
         const text = (item.content ?? []).filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
-        messages.push({ id: item.id, role: "user", text });
+        messages.push({ id: item.id, role: "user", text: stripComoteContext(text) });
       } else if (item.type === "agentMessage") {
         messages.push({ id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase });
       } else if (item.type === "commandExecution" || item.type === "fileChange") {
@@ -1431,6 +1507,13 @@ function extractHistory(thread: Thread): { messages: ChatMessage[]; activities: 
     }
   }
   return { messages, activities };
+}
+
+function stripComoteContext(text: string): string {
+  const marker = "\n\n<comote-private-context>";
+  const index = text.lastIndexOf(marker);
+  if (index < 0 || !text.slice(index).includes("</comote-private-context>")) return text;
+  return text.slice(0, index);
 }
 
 function upsertDelta(messages: ChatMessage[], id: string, delta: string): ChatMessage[] {

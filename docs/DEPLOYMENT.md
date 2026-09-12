@@ -27,6 +27,8 @@ The public Comote guide is served as static files from the active Comote release
 - Immutable releases: `/opt/comote/releases/<git-sha>`
 - Canonical development workspace: `/home/coder/projects/comote`
 - Comote state: `/home/coder/.local/share/comote`
+- Private project notes: `/home/coder/.local/share/comote/project-notes.json`
+- Private session attachments: `/home/coder/.local/share/comote/attachments`
 - Isolated task worktrees: `/home/coder/.local/share/comote/worktrees`
 - Codex login and sessions: `/home/coder/.codex`
 - Global Codex UI/UX skill: `/home/coder/.codex/skills/ui-ux-pro-max`
@@ -91,6 +93,10 @@ All browser clients operate on the same VPS development environment. New Codex t
 Project checks run standard npm scripts from the selected task worktree in the fixed order `lint`, `typecheck`, `test`, and `build`; if none exist, Comote recognizes a single `check` script. The browser cannot submit an arbitrary command to this runner. Output is bounded, checks time out after ten minutes per script, Comote environment variables are removed, and a source fingerprint marks old results stale when the worktree changes. Checks run sequentially to keep VPS resource use predictable.
 
 The browser stores an unsent prompt draft under a project-and-session-specific local key. No draft is sent to the server until the user presses Send, and a failed send preserves it. The SSE client deduplicates replayed event IDs and displays a reconnecting state while EventSource restores a dropped connection.
+
+Project notes are stored as a mode-`0600` file under private Comote state and appended to Codex input in a UI-hidden context block. A built-in rule requires a read-only server/service/port/process-manager/proxy/resource inventory before VPS deployment work, isolation from existing apps, backup and rollback, configuration validation, and post-change health checks. It forbids disrupting unrelated applications without explicit approval.
+
+Uploaded screenshots, documents, data, and source files are extension-validated, limited to 10 MB each, five per message, and 25 MB per session. Server-generated identifiers and owner-derived directories bind each file to one project/session. Files remain outside every application repository and are deleted when the session is permanently deleted. Operational-log fix actions bound and redact common credentials before sending logs to Codex.
 
 Comote records context usage reported by Codex and exposes native conversation compaction. A fresh-session handoff first compacts the old conversation, asks it for a structured summary, creates a new Codex session on the exact same worktree and branch, archives the old session, and seeds the new session with the summary plus verified Git status. Shared continuation worktrees are reference-protected so deleting the archived conversation cannot delete files still used by its successor.
 

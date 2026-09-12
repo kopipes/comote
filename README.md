@@ -62,6 +62,8 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Live assistant, command, file-change, status, and approval events
 - Reconnecting indicator with duplicate-event protection when a mobile or Tailscale connection drops
 - Per-session prompt drafts that survive refreshes and failed sends on the same browser
+- Persistent per-project notes for goals, conventions, and constraints; notes stay in private Comote state and are supplied to every Codex turn
+- Up to five validated screenshots, documents, or source files per message (10 MB each, 25 MB per session), stored outside the application repository
 - Approval allow/decline actions
 - Git status and diff viewer
 - One-click project checks that auto-detect standard npm lint, typecheck, test, and build scripts, plus **Fix with Codex** for failures
@@ -71,13 +73,17 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Persistent System, Light, and Dark appearance modes; Light uses the warm neutral `#F7F6F3` base
 - Daily verified local recovery backups and a five-minute self-healing health probe on the VPS
 - One-click preview for Node projects through a private, dedicated Tailscale Serve URL
+- One-click **Fix preview with Codex** and **Fix deploy with Codex** actions using bounded, client-redacted operational logs
 - One-click local production deployment for npm projects, with isolated releases, persistent storage, SQLite/PostgreSQL/MySQL, private Redis, secrets, migrations, health checks, wildcard HTTPS, and rollback
 - Public illustrated user guide at `https://guide.apps.devop.my.id/`, also linked from the Comote header
 - Globally installed UI/UX design intelligence for Codex; its skill code and catalogs never enter application repositories
 - Configurable Ping notices for completed Codex turns, approval requests, failed checks, and deploy or rollback results; notices never contain prompts, logs, code, or secrets
+- A built-in safe VPS deployment note requiring inventory, isolation, conflict checks, backup, health verification, and rollback while protecting unrelated applications and processes
 
 Ping OTP requires `COMOTE_PING_WEBHOOK_TOKEN` and `COMOTE_OTP_EMAIL`; the optional webhook URL defaults to the Ping notify endpoint. Keep the webhook token only in the root-owned production environment. OTP challenges remain in memory, expire after five minutes, are single-use, and are rate-limited.
 
 The UI/UX skill is vendored as a focused runtime bundle under `deploy/skills/ui-ux-pro-max` and copied to `/home/coder/.codex/skills/ui-ux-pro-max` before Comote starts. It is based on the MIT-licensed `nextlevelbuilder/ui-ux-pro-max-skill` core only; the gallery, package manager, fonts, premium assets, and unrelated design skills are excluded. Comote instructs Codex to use the design intelligence without copying its source or datasets into an application project.
 
 For an isolated task, run **Project checks**, commit its changes, use **Merge into main**, then use **Push main** when ready. Checks execute only the standard npm script names declared by the project: `lint`, `typecheck`, `test`, and `build`, or the single fallback `check` script. **Fix with Codex** sends only the failed check output to the selected session. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. **Deploy production** always packages the clean canonical branch, never an uncommitted task worktree. Add `comote.deploy.json`—normally by asking Codex in natural language—to select SQLite, PostgreSQL, MySQL, Redis, migration, health-check, and persistent-storage behavior. See [Project deployment](docs/PROJECT-DEPLOYMENT.md). Private GitHub credentials, passkeys, and multi-preview hosting are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
+
+Use **Settings → Project notes** for durable project-specific context. Comote also injects a non-editable safe-deployment rule. The **+ File** action uploads reference files to private per-session storage; they are not tracked by Git or pushed with the application unless the user explicitly asks Codex to copy their contents into the project.

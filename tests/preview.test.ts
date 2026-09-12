@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createPreviewEnvironment, detectPreviewLaunch } from "../src/server/preview.js";
+import { createPreviewEnvironment, detectPreviewLaunch, PreviewManager } from "../src/server/preview.js";
 
 test("preview launch detects a dev script and does not pass Comote secrets", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "comote-preview-"));
@@ -24,4 +24,22 @@ test("preview launch detects a dev script and does not pass Comote secrets", asy
     if (originalSecret === undefined) delete process.env.COMOTE_PASSWORD_HASH;
     else process.env.COMOTE_PASSWORD_HASH = originalSecret;
   }
+});
+
+test("a failed preview keeps its diagnostic state for Fix with Codex", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "comote-preview-failure-"));
+  await mkdir(path.join(cwd, "node_modules"));
+  await writeFile(path.join(cwd, "package.json"), JSON.stringify({
+    scripts: { dev: "node -e \"console.error('preview failed safely'); process.exit(1)\"" },
+  }));
+  const project = { id: "preview-project", name: "preview-project", path: cwd };
+  const manager = new PreviewManager(49_997, "https://preview.example.test");
+  await assert.rejects(
+    manager.start(project, "preview-thread", { path: cwd, writableRoots: [cwd], isolated: false }),
+    /Preview process exited/,
+  );
+  const status = manager.status(project, "preview-thread");
+  assert.equal(status.running, false);
+  assert.match(status.error, /Preview process exited/);
+  assert.match(status.logs, /preview failed safely/);
 });

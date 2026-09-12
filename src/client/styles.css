@@ -484,7 +484,14 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 .composer textarea { min-height: 48px; max-height: 160px; border: 0; background: transparent; resize: none; padding: 10px; line-height: 1.4; }
 .composer textarea:focus { outline: 0; }
+.attachment-list { display: flex; gap: 6px; overflow-x: auto; padding: 2px 4px 4px; }
+.attachment-list button { min-width: 0; max-width: 210px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 6px 8px; text-align: left; cursor: pointer; }
+.attachment-list button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+.attachment-list button small { font-size: 8px; }
 .composer-footer { position: absolute; left: 18px; right: 62px; bottom: 7px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.composer-tools { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.attach-button { flex: 0 0 auto; border: 0; background: transparent; color: var(--mint); padding: 2px 0; cursor: pointer; font-size: 9px; font-weight: 750; }
+.attach-button:disabled { color: var(--subtle); cursor: not-allowed; }
 .composer small { color: var(--subtle); font-size: 9px; }
 .model-picker { min-width: 0; display: flex; grid-template-columns: none; flex-direction: row; align-items: center; gap: 7px; color: var(--subtle); font-size: 9px; font-weight: 650; }
 .model-picker select { max-width: 190px; border: 0; background: transparent; color: var(--model-ink); font-size: 10px; cursor: pointer; }
@@ -531,6 +538,9 @@ button:not(:disabled):active { transform: translateY(1px); }
 .appearance-section { display: grid; gap: 14px; }
 .theme-tabs { grid-template-columns: repeat(3, 1fr); margin: 0; }
 .settings-form h3 { margin: 0; font-size: 15px; }
+.built-in-note { display: grid; gap: 5px; border: 1px solid var(--state-line); border-radius: 10px; background: var(--panel); padding: 11px; }
+.built-in-note strong { color: var(--mint); font-size: 11px; }
+.built-in-note span { color: var(--muted); font-size: 10px; line-height: 1.55; }
 .settings-section { padding-top: 22px; border-top: 1px solid var(--line); }
 .optional { color: var(--subtle); font-weight: 500; }
 .field-help { margin: -6px 0 0; color: var(--subtle); font-size: 11px; line-height: 1.5; }

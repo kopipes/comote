@@ -139,6 +139,9 @@
         <article class="explain-card"><h3>Lanjut di fresh session</h3><p>Pilih <b>Continue in fresh session</b> bila ingin percakapan benar-benar baru. Comote membuat summary otomatis, memakai task worktree yang sama, lalu mengarsipkan session lama. Pekerjaan yang belum di-commit tetap berada di tempatnya.</p></article>
         <article class="explain-card"><h3>Rapikan session</h3><p>Tekan tombol <b>•••</b> pada session. <b>Archive</b> menyembunyikannya tanpa menghapus pekerjaan dan dapat dipulihkan dari daftar <b>Archived</b>. <b>Delete permanently</b> hanya berhasil bila tidak ada file belum di-commit atau commit yang belum di-merge.</p></article>
         <article class="explain-card"><h3>Design UI/UX lebih kaya</h3><p>Codex di Comote memiliki design intelligence global untuk memilih pola layout, warna, tipografi, responsive behavior, accessibility, dan stack-specific UI. Yang masuk repository aplikasi hanya hasil implementasinya—bukan skill atau database referensinya.</p></article>
+        <article class="explain-card"><h3>Project Notes yang selalu ikut</h3><p>Buka <b>Settings → Project notes</b> untuk menyimpan tujuan, aturan design, stack, bahasa, atau batasan project. Comote memberikan catatan ini ke Codex pada setiap pesan dan saat pindah ke fresh session. Catatan disimpan privat di Comote, bukan di repository aplikasi.</p></article>
+        <article class="explain-card"><h3>Kirim screenshot atau file</h3><p>Tekan <b>+ File</b> di kotak chat, pilih maksimal lima gambar, PDF, data, atau file source, lalu kirim prompt. Maksimal 10 MB per file dan 25 MB per session. File menjadi referensi privat; tidak ikut Git atau Push kecuali Anda secara jelas meminta Codex menyalin hasilnya ke project.</p></article>
+        <article class="explain-card"><h3>Perbaiki preview/deploy dari log</h3><p>Jika preview atau deploy gagal, buka log lalu tekan <b>Fix preview with Codex</b> atau <b>Fix deploy with Codex</b>. Comote membatasi ukuran log dan menyamarkan pola credential umum sebelum mengirimkannya ke session aktif.</p></article>
       </div>
 
       <div class="session-guide" id="session">
@@ -217,6 +220,7 @@
           <div><strong>Redis</strong><span>Tambahan opsional</span><p>Untuk cache, queue, rate limit, atau session cepat.</p></div>
         </div>
         <div class="prompt-callout"><span>Contoh prompt</span><code>“Siapkan aplikasi ini untuk deploy di Comote. Gunakan SQLite, buat migration, persistent storage, dan health check.”</code></div>
+        <div class="tip"><strong>Safe deploy selalu aktif.</strong> Untuk deploy langsung ke VPS mana pun, Codex akan mengecek service, port, process manager atau container, reverse proxy, folder aplikasi, disk, dan memory terlebih dahulu. App baru harus terisolasi, memiliki backup/rollback dan health check, serta tidak boleh mengganggu app atau process yang sudah ada tanpa persetujuan Anda.</div>
       </div>
     </section>
 
@@ -228,7 +232,7 @@
       <div class="mobile-gallery">
         <figure><img src="assets/05-mobile.png" alt="Tampilan utama Comote pada layar handphone" /><figcaption><b>Chat</b> — buat session dan bicara dengan Codex.</figcaption></figure>
         <figure><img src="assets/06-mobile-changes.png" alt="Panel Changes Comote pada layar handphone" /><figcaption><b>Changes</b> — commit, push, preview, dan deploy.</figcaption></figure>
-        <div class="mobile-tips"><h3>Tips nyaman dari HP</h3><ul><li>Tambahkan Comote ke Home Screen agar terasa seperti aplikasi.</li><li>Pilih <b>System</b>, <b>Light</b>, atau <b>Dark</b> dari Settings. Light memakai warna netral hangat, bukan putih terang.</li><li>Prompt yang belum dikirim tersimpan otomatis untuk session tersebut, termasuk setelah refresh.</li><li>Jika koneksi terputus, tunggu label <b>Reconnecting</b> hilang; Comote menyambung kembali secara otomatis.</li><li>Aktifkan notifikasi Ping dari Settings agar tahu saat Codex selesai atau meminta approval.</li><li>Review diff kecil lebih mudah daripada menunggu perubahan terlalu besar.</li><li>Jangan menutup Tailscale bila ingin membuka Comote atau preview privat.</li></ul></div>
+        <div class="mobile-tips"><h3>Tips nyaman dari HP</h3><ul><li>Tambahkan Comote ke Home Screen agar terasa seperti aplikasi.</li><li>Pilih <b>System</b>, <b>Light</b>, atau <b>Dark</b> dari Settings. Light memakai warna netral hangat, bukan putih terang.</li><li>Tekan <b>+ File</b> untuk mengirim screenshot langsung dari galeri/kamera HP sebagai referensi Codex.</li><li>Prompt yang belum dikirim tersimpan otomatis untuk session tersebut, termasuk setelah refresh.</li><li>Jika koneksi terputus, tunggu label <b>Reconnecting</b> hilang; Comote menyambung kembali secara otomatis.</li><li>Aktifkan notifikasi Ping dari Settings agar tahu saat Codex selesai atau meminta approval.</li><li>Review diff kecil lebih mudah daripada menunggu perubahan terlalu besar.</li><li>Jangan menutup Tailscale bila ingin membuka Comote atau preview privat.</li></ul></div>
       </div>
     </section>
 

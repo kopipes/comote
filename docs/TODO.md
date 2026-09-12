@@ -14,6 +14,10 @@ This file is the durable implementation checklist for agreed Comote work. It con
 - [x] Add one-click standard project checks with bounded output, stale-result detection, and **Fix with Codex**.
 - [x] Add configurable, content-free Ping notices for Codex completion, approvals, failed checks, and deployment results.
 - [x] Preserve per-session prompt drafts and show safe automatic reconnect status without replaying duplicate events.
+- [x] Add private persistent project notes and inject them into Codex turns and fresh-session handoffs.
+- [x] Add validated per-session screenshot and file attachments outside application repositories.
+- [x] Add redacted **Fix with Codex** actions for failed preview and deployment logs.
+- [x] Add an always-on safe VPS deployment rule that protects existing services, ports, proxies, and applications.
 
 ## Later
 
@@ -21,5 +25,3 @@ This file is the durable implementation checklist for agreed Comote work. It con
 - [ ] Add an off-VPS encrypted backup destination.
 - [ ] Add passkey login as an optional alternative to Ping OTP/password.
 - [ ] Add multiple simultaneous private preview slots if concurrent previewing becomes necessary.
-- [ ] Add persistent project notes that are injected into new sessions.
-- [ ] Add validated per-session screenshot and file attachments.

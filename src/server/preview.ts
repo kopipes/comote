@@ -24,10 +24,12 @@ export interface PreviewStatus {
   command: string;
   logs: string;
   startedAt: string;
+  error: string;
 }
 
 export class PreviewManager {
   private active: ActivePreview | null = null;
+  private lastFailure: (Omit<ActivePreview, "child" | "ready"> & { error: string }) | null = null;
   private operation = Promise.resolve();
 
   constructor(private readonly port: number, private readonly publicUrl: string) {}
@@ -35,14 +37,18 @@ export class PreviewManager {
   status(project: Project, threadId: string): PreviewStatus {
     const active = this.active;
     const selected = Boolean(active && active.projectId === project.id && active.threadId === threadId);
+    const failed = !selected && this.lastFailure?.projectId === project.id && this.lastFailure.threadId === threadId
+      ? this.lastFailure
+      : null;
     return {
       running: Boolean(active),
       selected,
       ready: Boolean(active?.ready),
       url: this.publicUrl,
-      command: selected ? active!.command : "",
-      logs: selected ? active!.logs : "",
-      startedAt: selected ? active!.startedAt : "",
+      command: selected ? active!.command : failed?.command ?? "",
+      logs: selected ? active!.logs : failed?.logs ?? "",
+      startedAt: selected ? active!.startedAt : failed?.startedAt ?? "",
+      error: failed?.error ?? "",
     };
   }
 
@@ -80,11 +86,22 @@ export class PreviewManager {
       try {
         await waitUntilReady(this.port, child, 30_000);
         active.ready = true;
+        this.lastFailure = null;
         return this.status(project, threadId);
       } catch (error) {
         const logs = active.logs.trim();
+        const message = `${(error as Error).message}${logs ? ` Last output: ${logs.slice(-1_000)}` : ""}`;
+        this.lastFailure = {
+          projectId: active.projectId,
+          threadId: active.threadId,
+          cwd: active.cwd,
+          command: active.command,
+          logs,
+          startedAt: active.startedAt,
+          error: message,
+        };
         await this.stopActive();
-        throw new Error(`${(error as Error).message}${logs ? ` Last output: ${logs.slice(-1_000)}` : ""}`);
+        throw new Error(message);
       }
     });
   }
