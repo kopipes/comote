@@ -420,6 +420,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .conversation-header .eyebrow { margin-bottom: 5px; }
 .run-state { flex: 0 0 auto; border: 1px solid var(--line-bright); border-radius: 999px; padding: 7px 10px; color: var(--muted); font-size: 10px; }
 .run-state.running { border-color: var(--state-line); background: var(--mint-dark); color: var(--mint); }
+.connection-state { flex: 0 0 auto; border: 1px solid var(--notice-line); border-radius: 999px; background: var(--notice-bg); color: var(--notice-ink); padding: 6px 9px; font-size: 9px; font-weight: 750; }
 .run-states { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .task-state { border: 1px solid var(--task-line); border-radius: 999px; color: var(--mint); padding: 5px 8px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .session-menu-button { width: 30px; height: 30px; font-size: 11px; letter-spacing: 1px; }
@@ -572,6 +573,24 @@ button:not(:disabled):active { transform: translateY(1px); }
 .commit-box { display: grid; gap: 9px; margin: 22px 12px; padding-top: 18px; border-top: 1px solid var(--line); }
 .commit-box textarea { font-size: 11px; }
 .commit-box button { font-size: 11px; }
+.checks-box { display: grid; gap: 9px; margin: 18px 12px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
+.checks-box.passed { border-color: var(--state-line); }
+.checks-box.failed { border-color: var(--danger-line); }
+.checks-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.checks-heading > div { display: grid; gap: 4px; }
+.checks-heading .eyebrow { margin: 0; }
+.checks-heading strong { color: var(--muted); font-size: 10px; }
+.checks-box > p { margin: 0; color: var(--subtle); font-size: 9px; line-height: 1.5; }
+.checks-box .check-warning { color: var(--warning-ink); }
+.check-step { border: 1px solid var(--line); border-radius: 8px; background: var(--activity-bg); }
+.check-step summary { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 6px; padding: 8px; cursor: pointer; list-style: none; }
+.check-step summary::-webkit-details-marker { display: none; }
+.check-step summary > span { color: var(--subtle); font-weight: 800; }
+.check-step.passed summary > span { color: var(--mint); }
+.check-step.failed summary > span { color: var(--danger); }
+.check-step summary strong { color: var(--muted); font-size: 10px; }
+.check-step summary small { color: var(--subtle); font-size: 8px; text-transform: uppercase; }
+.check-step pre { max-height: 190px; overflow: auto; margin: 0; border-top: 1px solid var(--line); background: var(--code-bg); color: var(--code-ink); padding: 9px; font: 9px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 .preview-box { display: grid; gap: 11px; margin: 18px 12px; padding: 16px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
 .preview-box > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .preview-box .eyebrow { margin: 0; }
@@ -583,6 +602,10 @@ button:not(:disabled):active { transform: translateY(1px); }
 .preview-box details summary { cursor: pointer; color: var(--muted); font-size: 10px; }
 .preview-box pre { max-height: 180px; margin-top: 8px; font-size: 9px; }
 .deployment-box { display: grid; gap: 10px; margin: 18px 12px 28px; padding: 16px 12px; border: 1px solid var(--deployment-line); border-radius: 11px; background: var(--deployment-bg); }
+
+.notification-options { display: grid; gap: 7px; }
+.notification-toggle { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); padding: 10px 11px; color: var(--muted); font-size: 11px; cursor: pointer; }
+.notification-toggle input { width: 17px; height: 17px; margin: 0; accent-color: var(--mint); }
 .deployment-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .deployment-heading > div { display: grid; gap: 4px; }
 .deployment-heading .eyebrow { margin: 0; }

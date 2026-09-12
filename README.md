@@ -60,8 +60,11 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Archive, restore, or permanently delete sessions from the session menu; deletion refuses uncommitted or unmerged task work
 - New sessions run in an isolated `comote/task-*` Git worktree; existing sessions remain compatible with the canonical workspace
 - Live assistant, command, file-change, status, and approval events
+- Reconnecting indicator with duplicate-event protection when a mobile or Tailscale connection drops
+- Per-session prompt drafts that survive refreshes and failed sends on the same browser
 - Approval allow/decline actions
 - Git status and diff viewer
+- One-click project checks that auto-detect standard npm lint, typecheck, test, and build scripts, plus **Fix with Codex** for failures
 - Explicit commit with provenance trailers and explicit push
 - Explicit merge from a clean task branch into the canonical branch, also with provenance trailers
 - Responsive mobile/desktop layout and installable PWA shell
@@ -71,9 +74,10 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - One-click local production deployment for npm projects, with isolated releases, persistent storage, SQLite/PostgreSQL/MySQL, private Redis, secrets, migrations, health checks, wildcard HTTPS, and rollback
 - Public illustrated user guide at `https://guide.apps.devop.my.id/`, also linked from the Comote header
 - Globally installed UI/UX design intelligence for Codex; its skill code and catalogs never enter application repositories
+- Configurable Ping notices for completed Codex turns, approval requests, failed checks, and deploy or rollback results; notices never contain prompts, logs, code, or secrets
 
 Ping OTP requires `COMOTE_PING_WEBHOOK_TOKEN` and `COMOTE_OTP_EMAIL`; the optional webhook URL defaults to the Ping notify endpoint. Keep the webhook token only in the root-owned production environment. OTP challenges remain in memory, expire after five minutes, are single-use, and are rate-limited.
 
 The UI/UX skill is vendored as a focused runtime bundle under `deploy/skills/ui-ux-pro-max` and copied to `/home/coder/.codex/skills/ui-ux-pro-max` before Comote starts. It is based on the MIT-licensed `nextlevelbuilder/ui-ux-pro-max-skill` core only; the gallery, package manager, fonts, premium assets, and unrelated design skills are excluded. Comote instructs Codex to use the design intelligence without copying its source or datasets into an application project.
 
-For an isolated task, commit its changes first, use **Merge into main**, then use **Push main** when ready. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. **Deploy production** always packages the clean canonical branch, never an uncommitted task worktree. Add `comote.deploy.json`—normally by asking Codex in natural language—to select SQLite, PostgreSQL, MySQL, Redis, migration, health-check, and persistent-storage behavior. See [Project deployment](docs/PROJECT-DEPLOYMENT.md). Private GitHub credentials, passkeys, multi-preview hosting, and push notifications are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.
+For an isolated task, run **Project checks**, commit its changes, use **Merge into main**, then use **Push main** when ready. Checks execute only the standard npm script names declared by the project: `lint`, `typecheck`, `test`, and `build`, or the single fallback `check` script. **Fix with Codex** sends only the failed check output to the selected session. **Push task branch** is available when you want an off-VPS copy of the task before merging. **Start preview** auto-detects an npm `dev` or `start` script; ask Codex to install dependencies first when `node_modules` is absent. **Deploy production** always packages the clean canonical branch, never an uncommitted task worktree. Add `comote.deploy.json`—normally by asking Codex in natural language—to select SQLite, PostgreSQL, MySQL, Redis, migration, health-check, and persistent-storage behavior. See [Project deployment](docs/PROJECT-DEPLOYMENT.md). Private GitHub credentials, passkeys, and multi-preview hosting are scheduled as later layers. Public GitHub imports and remotes work without stored GitHub credentials.

@@ -72,6 +72,32 @@ export interface PreviewState {
   startedAt: string;
 }
 
+export interface CheckStep {
+  name: string;
+  label: string;
+  command: string;
+  phase: "pending" | "running" | "passed" | "failed";
+  output: string;
+  durationMs: number;
+  exitCode: number | null;
+}
+
+export interface CheckState {
+  phase: "idle" | "running" | "passed" | "failed" | "unavailable";
+  steps: CheckStep[];
+  startedAt: string;
+  finishedAt: string;
+  message: string;
+  stale: boolean;
+}
+
+export interface NotificationPreferences {
+  turnComplete: boolean;
+  approvalRequired: boolean;
+  checkFailed: boolean;
+  deploymentResult: boolean;
+}
+
 export interface DeploymentState {
   enabled: boolean;
   domainSuffix: string;

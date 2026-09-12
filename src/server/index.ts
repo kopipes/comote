@@ -4,11 +4,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
+import { CheckManager } from "./checks.js";
 import { DeploymentManager } from "./deployment.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
 import { PasswordStore } from "./password.js";
 import { OtpStore } from "./otp.js";
+import { NotificationSettingsStore } from "./notification-settings.js";
+import { NotificationService } from "./notifications.js";
 import { PingClient } from "./ping.js";
 import { PreviewManager } from "./preview.js";
 import { ProjectRegistry, type Project } from "./projects.js";
@@ -31,11 +34,14 @@ const sessions = new SessionStore(config.dataDir, config.sessionDays);
 const passwords = new PasswordStore(config.dataDir, config.passwordHash);
 const otp = new OtpStore();
 const ping = new PingClient(config.pingWebhookUrl, config.pingWebhookToken, config.otpEmail);
+const notificationSettings = new NotificationSettingsStore(config.dataDir);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
 const previews = new PreviewManager(config.previewPort, config.previewUrl);
 const deployments = new DeploymentManager(config.dataDir, config.deployDomain, config.deploySocket);
 const events = new EventHub();
+const notifications = new NotificationService(ping, notificationSettings, events);
+const checks = new CheckManager((project, state) => notifications.checkFinished(project.name, state.phase === "passed"));
 const threadUsage = new ThreadUsageStore(config.dataDir);
 const codex = new CodexClient(config, events, threadUsage);
 const threadModels = new ThreadModelStore(config.dataDir);
@@ -43,7 +49,8 @@ const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
 const mergingProjects = new Set<string>();
 const handoffThreads = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init(), notificationSettings.init()]);
+deployments.subscribe((project, state, action) => notifications.deploymentFinished(project.name, state, action));
 
 const app = express();
 app.disable("x-powered-by");
@@ -152,6 +159,14 @@ app.post("/api/password", requireCsrf, async (request, response) => {
   await passwords.change(currentPassword, newPassword);
   await sessions.revokeAllExcept(request.comoteToken!);
   response.status(204).end();
+});
+
+app.get("/api/notifications", (_request, response) => {
+  response.json({ enabled: ping.enabled, preferences: notificationSettings.get() });
+});
+
+app.post("/api/notifications", requireCsrf, async (request, response) => {
+  response.json({ enabled: ping.enabled, preferences: await notificationSettings.set(request.body?.preferences) });
 });
 
 app.get("/api/models", async (_request, response) => {
@@ -289,14 +304,20 @@ app.post("/api/projects/:projectId/threads/:threadId/continue", requireCsrf, asy
     await codex.archiveThread(threadId);
     oldArchived = true;
     const seed = buildContinuationSeed(oldTitle, summary, repository.branch, repository.status);
-    await codex.startTurn(
-      nextThreadId,
-      workspace.path,
-      seed,
-      request.comoteSession!.deviceName,
-      workspace.writableRoots,
-      model,
-    );
+    notifications.trackTurn(nextThreadId, project.name);
+    try {
+      await codex.startTurn(
+        nextThreadId,
+        workspace.path,
+        seed,
+        request.comoteSession!.deviceName,
+        workspace.writableRoots,
+        model,
+      );
+    } catch (error) {
+      notifications.cancelTurn(nextThreadId);
+      throw error;
+    }
     response.status(201).json({ thread: { ...next, name: nextTitle }, summary });
   } catch (error) {
     if (oldArchived) await codex.unarchiveThread(threadId).catch(() => undefined);
@@ -354,14 +375,21 @@ app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, asy
     response.status(400).json({ error: "Message must be 1–20,000 characters." });
     return;
   }
-  const turn = await codex.startTurn(
-    threadId,
-    workspace.path,
-    text,
-    request.comoteSession!.deviceName,
-    workspace.writableRoots,
-    threadModels.get(threadId),
-  );
+  notifications.trackTurn(threadId, project.name);
+  let turn: Record<string, unknown>;
+  try {
+    turn = await codex.startTurn(
+      threadId,
+      workspace.path,
+      text,
+      request.comoteSession!.deviceName,
+      workspace.writableRoots,
+      threadModels.get(threadId),
+    );
+  } catch (error) {
+    notifications.cancelTurn(threadId);
+    throw error;
+  }
   response.status(202).json({ turn });
 });
 
@@ -407,6 +435,20 @@ app.post("/api/projects/:projectId/threads/:threadId/approvals/:requestId", requ
     decision as "accept" | "decline" | "cancel",
   );
   response.status(204).end();
+});
+
+app.get("/api/projects/:projectId/checks", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = queryString(request, "threadId");
+  const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
+  response.json(await checks.status(checkKey(project.id, threadId), workspace.path));
+});
+
+app.post("/api/projects/:projectId/checks/start", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
+  response.status(202).json(await checks.start(checkKey(project.id, threadId), project, workspace.path));
 });
 
 app.get("/api/projects/:projectId/git", async (request, response) => {
@@ -582,6 +624,10 @@ function queryString(request: Request, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function checkKey(projectId: string, threadId: string): string {
+  return `${projectId}:${threadId || "canonical"}`;
+}
+
 function clientIp(request: Request): string {
   return request.ip || request.socket.remoteAddress || "unknown";
 }
@@ -591,8 +637,8 @@ function errorStatus(message: string): number {
   if (message.includes("already exists") || message.includes("already in progress") || message.includes("currently working") || message.includes("Another active session is using")) return 409;
   if (message === "OTP is invalid or expired." || message === "Current password is incorrect.") return 401;
   if (message.startsWith("Wait before requesting another OTP") || message.startsWith("OTP requests are temporarily limited")) return 429;
-  if (message.startsWith("Ping OTP is not configured") || message.startsWith("Preview is not configured") || message.startsWith("Production deployment is not configured")) return 503;
-  if (message.startsWith("Ping OTP delivery") || message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") || message.startsWith("Git operation failed")) return 502;
+  if (message.startsWith("Ping is not configured") || message.startsWith("Ping OTP is not configured") || message.startsWith("Preview is not configured") || message.startsWith("Production deployment is not configured")) return 503;
+  if (message.startsWith("Ping delivery") || message.startsWith("Preview process exited") || message.startsWith("Preview did not become ready") || message.startsWith("Git operation failed")) return 502;
   if (message.startsWith("A deployment is already in progress") || message.startsWith("Canonical workspace") || message.startsWith("Task worktree") || message.startsWith("Task or canonical") || message.startsWith("Session has")) return 409;
   if (message.startsWith("Invalid") || message.startsWith("Password must") || message.startsWith("New password must") || message.startsWith("Commit message must") || message.startsWith("Only an isolated") || message.startsWith("No previous production") || message.startsWith("Preview currently supports") || message.startsWith("Dependencies are not installed") || message.startsWith("No dev or start script") || message.startsWith("Missing required production secrets") || message.includes("comote.deploy.json") || message.startsWith("Deployment needs")) return 400;
   return 500;
@@ -662,6 +708,7 @@ function writeSse(response: Response, event: unknown): void {
 
 function shutdown(): void {
   codex.stop();
+  checks.stop();
   void previews.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5_000).unref();

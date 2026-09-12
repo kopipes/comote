@@ -45,6 +45,8 @@ The service runs as the locked, non-sudo `coder` account. Its systemd sandbox gr
 
 The root-only environment also contains the Ping webhook token and fixed OTP destination. The browser receives only a masked destination; webhook credentials and full destination configuration never enter client assets or Git history.
 
+The same fixed Ping integration can send optional operational notices when a tracked Codex turn finishes, approval is required, project checks fail, or deployment/rollback completes. Preferences are stored under the private Comote data directory. Notifications contain only a sanitized project name and a short status; prompts, command text, check/deploy logs, code, credentials, and the configured recipient are not included.
+
 ## Health and recovery
 
 Run these from an authorized administrator machine:
@@ -85,6 +87,10 @@ ssh cloudeka48 'sudo nginx -t'
 ## Development continuity
 
 All browser clients operate on the same VPS development environment. New Codex tasks use persistent isolated Git worktrees, so parallel tasks do not overwrite each other's uncommitted files; existing threads continue in their original canonical workspace. A clean, committed task branch can be merged explicitly into the canonical branch. Commits and task merges made by the Comote UI include `Requested-From`, `Developed-On`, `Assisted-By`, and `Comote-Session` trailers so the origin remains visible in Git history.
+
+Project checks run standard npm scripts from the selected task worktree in the fixed order `lint`, `typecheck`, `test`, and `build`; if none exist, Comote recognizes a single `check` script. The browser cannot submit an arbitrary command to this runner. Output is bounded, checks time out after ten minutes per script, Comote environment variables are removed, and a source fingerprint marks old results stale when the worktree changes. Checks run sequentially to keep VPS resource use predictable.
+
+The browser stores an unsent prompt draft under a project-and-session-specific local key. No draft is sent to the server until the user presses Send, and a failed send preserves it. The SSE client deduplicates replayed event IDs and displays a reconnecting state while EventSource restores a dropped connection.
 
 Comote records context usage reported by Codex and exposes native conversation compaction. A fresh-session handoff first compacts the old conversation, asks it for a structured summary, creates a new Codex session on the exact same worktree and branch, archives the old session, and seeds the new session with the summary plus verified Git status. Shared continuation worktrees are reference-protected so deleting the archived conversation cannot delete files still used by its successor.
 

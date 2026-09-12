@@ -26,6 +26,7 @@ export class EventHub {
     if (items.length > 250) items.splice(0, items.length - 250);
     this.history.set(threadId, items);
     this.emitter.emit(threadId, event);
+    this.emitter.emit("*", event);
     return event;
   }
 
@@ -36,5 +37,10 @@ export class EventHub {
   subscribe(threadId: string, listener: (event: ComoteEvent) => void): () => void {
     this.emitter.on(threadId, listener);
     return () => this.emitter.off(threadId, listener);
+  }
+
+  subscribeAll(listener: (event: ComoteEvent) => void): () => void {
+    this.emitter.on("*", listener);
+    return () => this.emitter.off("*", listener);
   }
 }

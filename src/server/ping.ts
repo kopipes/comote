@@ -37,8 +37,17 @@ export class PingClient {
     });
   }
 
+  async sendNotice(title: string, text: string): Promise<void> {
+    await this.notify({
+      userEmail: this.userEmail,
+      title: title.trim().slice(0, 120),
+      text: text.trim().slice(0, 2_000),
+      source: "Comote",
+    });
+  }
+
   private async notify(payload: PingWebhookPayload): Promise<void> {
-    if (!this.enabled) throw new Error("Ping OTP is not configured.");
+    if (!this.enabled) throw new Error("Ping is not configured.");
     let response: Response;
     try {
       response = await this.request(this.webhookUrl, {
@@ -51,11 +60,11 @@ export class PingClient {
         signal: AbortSignal.timeout(8_000),
       });
     } catch {
-      throw new Error("Ping OTP delivery is temporarily unavailable.");
+      throw new Error("Ping delivery is temporarily unavailable.");
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw new Error(`Ping OTP delivery failed (${response.status}).`);
+      throw new Error(`Ping delivery failed (${response.status}).`);
     }
     await response.body?.cancel().catch(() => undefined);
   }

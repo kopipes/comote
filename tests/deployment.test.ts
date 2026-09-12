@@ -42,18 +42,22 @@ test("deployment manager records deploys and rollbacks without blocking the API"
       : { ok: true, release: "r2", previousRelease: "r1", kind: "static", logs: "second" };
   });
   await manager.init();
+  const completions: string[] = [];
+  manager.subscribe((_project, state, action) => completions.push(`${action}:${state.phase}`));
 
   assert.equal(manager.start(project, "Demo").phase, "deploying");
-  await waitFor(() => manager.status(project).phase === "deployed");
+  await waitFor(() => completions.length === 1);
   assert.equal(manager.status(project).release, "r1");
+  assert.deepEqual(completions, ["deploy:deployed"]);
 
   manager.start(project, "demo");
-  await waitFor(() => manager.status(project).release === "r2");
+  await waitFor(() => completions.length === 2);
   assert.equal(manager.status(project).previousRelease, "r1");
 
   assert.equal(manager.rollback(project).phase, "rolling_back");
-  await waitFor(() => manager.status(project).release === "r1");
+  await waitFor(() => completions.length === 3);
   assert.equal(manager.status(project).previousRelease, "r2");
+  assert.deepEqual(completions, ["deploy:deployed", "deploy:deployed", "rollback:deployed"]);
 });
 
 test("deployment state corruption fails closed instead of erasing app mappings", async () => {

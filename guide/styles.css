@@ -88,7 +88,7 @@ figcaption { margin-top: 11px; color: var(--muted); font-size: 13px; }
 .prompt-list button:hover { border-color: var(--mint); color: var(--ink); }
 .copy-note { min-height: 1.2em; margin-bottom: 0; color: var(--mint) !important; font-size: 12px; }
 .workflow-section, .deploy-section, .recipes { width: 100%; max-width: none; padding-left: max(24px, calc((100vw - var(--max)) / 2)); padding-right: max(24px, calc((100vw - var(--max)) / 2)); background: #0b1712; border-block: 1px solid var(--line); }
-.workflow { display: grid; grid-template-columns: repeat(11, auto); align-items: center; gap: 12px; }
+.workflow { display: grid; grid-template-columns: repeat(13, auto); align-items: center; gap: 10px; }
 .workflow > div { min-height: 150px; min-width: 130px; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #07100d; }
 .workflow > div span { color: var(--mint); font: 700 12px ui-monospace, monospace; }
 .workflow > div small { color: var(--muted); line-height: 1.3; }

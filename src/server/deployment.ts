@@ -49,12 +49,14 @@ interface BrokerResponse {
 }
 
 type BrokerCall = (request: BrokerRequest) => Promise<BrokerResponse>;
+type CompletionListener = (project: Project, status: DeploymentStatus, action: "deploy" | "rollback") => void;
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export class DeploymentManager {
   private readonly states = new Map<string, DeploymentStatus>();
   private readonly activeProjects = new Set<string>();
+  private readonly completionListeners = new Set<CompletionListener>();
   private readonly statePath: string;
   private persistQueue = Promise.resolve();
 
@@ -80,6 +82,11 @@ export class DeploymentManager {
         ? { ...normalized, phase: "failed", logs: `${state.logs}\nDeployment was interrupted by a Comote restart.`.trim(), updatedAt: new Date().toISOString() }
         : normalized);
     }
+  }
+
+  subscribe(listener: CompletionListener): () => void {
+    this.completionListeners.add(listener);
+    return () => this.completionListeners.delete(listener);
   }
 
   status(project: Project): DeploymentStatus {
@@ -231,6 +238,8 @@ export class DeploymentManager {
     } finally {
       this.activeProjects.delete(project.id);
       await this.persist();
+      const completed = this.status(project);
+      for (const listener of this.completionListeners) listener(project, completed, request.action as "deploy" | "rollback");
     }
   }
 

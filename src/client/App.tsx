@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
+import { api, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
+import { CheckPanel } from "./CheckPanel";
+import { Composer, draftStorageKey } from "./Composer";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
@@ -237,7 +239,9 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
+  const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "connected" | "reconnecting">("idle");
   const streamRef = useRef<EventSource | null>(null);
+  const seenEventIdsRef = useRef(new Set<string>());
   const gitRequestRef = useRef(0);
   const modelRequestRef = useRef(0);
 
@@ -326,11 +330,22 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
 
   useEffect(() => {
     streamRef.current?.close();
-    if (!project || !thread) return;
+    seenEventIdsRef.current.clear();
+    if (!project || !thread) {
+      setConnectionState("idle");
+      return;
+    }
+    setConnectionState("connecting");
     const stream = new EventSource(`/api/projects/${project.id}/threads/${thread.id}/events`);
     streamRef.current = stream;
-    stream.onmessage = (event) => applyLiveEvent(JSON.parse(event.data) as LiveEvent);
-    stream.onerror = () => setError("Live connection interrupted. Comote will reconnect automatically.");
+    stream.onopen = () => setConnectionState("connected");
+    stream.onmessage = (event) => {
+      const parsed = JSON.parse(event.data) as LiveEvent;
+      if (seenEventIdsRef.current.has(parsed.id)) return;
+      seenEventIdsRef.current.add(parsed.id);
+      applyLiveEvent(parsed);
+    };
+    stream.onerror = () => setConnectionState("reconnecting");
     return () => stream.close();
   }, [project, thread?.id]);
 
@@ -424,18 +439,26 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     }
   }
 
-  async function sendMessage(text: string) {
-    if (!project || !thread) return;
+  async function sendMessage(text: string): Promise<boolean> {
+    if (!project || !thread) return false;
     const optimisticId = `local-${Date.now()}`;
     setMessages((current) => [...current, { id: optimisticId, role: "user", text }]);
     setRunning(true);
     setError("");
     try {
       await api.post(`/api/projects/${project.id}/threads/${thread.id}/messages`, { text });
+      return true;
     } catch (cause) {
       setRunning(false);
       setError((cause as Error).message);
+      return false;
     }
+  }
+
+  async function askCodexFromChanges(text: string): Promise<boolean> {
+    const sent = await sendMessage(text);
+    if (sent) setMobilePanel("chat");
+    return sent;
   }
 
   async function chooseModel(model: string) {
@@ -576,6 +599,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
               <div><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
               <div className="run-states">
                 {git?.isolated && <span className="task-state">Isolated task</span>}
+                {connectionState === "reconnecting" && <span className="connection-state">Reconnecting…</span>}
                 <ContextMeter usage={contextUsage} disabled={running || busy} onClick={() => setManagingSession(true)} />
                 <span className={`run-state ${running ? "running" : ""}`}>{compacting ? "Compacting" : running ? "Codex is working" : "Ready"}</span>
                 <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
@@ -591,13 +615,13 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
               {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={decide} />)}
               {running && <div className="thinking"><span /><span /><span /> Codex is working</div>}
             </div>
-            {!showArchived && <Composer disabled={running} onSend={sendMessage} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
+            {!showArchived && <Composer key={draftStorageKey(project!.id, thread.id)} draftKey={draftStorageKey(project!.id, thread.id)} disabled={running} onSend={sendMessage} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
           </>
         )}
       </main>
 
       <aside className="changes-pane">
-        <ChangesPanel project={project} thread={thread} git={git} onRefresh={() => refreshGit()} onError={setError} />
+        <ChangesPanel project={project} thread={thread} git={git} agentBusy={running} onAskCodex={askCodexFromChanges} onRefresh={() => refreshGit()} onError={setError} />
       </aside>
 
       <nav className="mobile-nav">
@@ -898,6 +922,21 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
   const [projectBusy, setProjectBusy] = useState(false);
   const [projectError, setProjectError] = useState("");
   const [projectSuccess, setProjectSuccess] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
+  const [notificationBusy, setNotificationBusy] = useState(true);
+  const [notificationError, setNotificationError] = useState("");
+  const [notificationSuccess, setNotificationSuccess] = useState("");
+
+  useEffect(() => {
+    api.get<{ enabled: boolean; preferences: NotificationPreferences }>("/api/notifications")
+      .then((result) => {
+        setNotificationsEnabled(result.enabled);
+        setNotificationPreferences(result.preferences);
+      })
+      .catch((cause) => setNotificationError((cause as Error).message))
+      .finally(() => setNotificationBusy(false));
+  }, []);
 
   useEffect(() => {
     if (!project) return;
@@ -952,7 +991,25 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
     }
   }
 
-  const busy = passwordBusy || projectBusy;
+  async function saveNotifications(event: FormEvent) {
+    event.preventDefault();
+    if (!notificationPreferences) return;
+    setNotificationBusy(true);
+    setNotificationError("");
+    setNotificationSuccess("");
+    try {
+      const result = await api.post<{ enabled: boolean; preferences: NotificationPreferences }>("/api/notifications", { preferences: notificationPreferences });
+      setNotificationsEnabled(result.enabled);
+      setNotificationPreferences(result.preferences);
+      setNotificationSuccess("Ping notification preferences saved.");
+    } catch (cause) {
+      setNotificationError((cause as Error).message);
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
+  const busy = passwordBusy || projectBusy || notificationBusy;
 
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => {
@@ -974,6 +1031,22 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
             ))}
           </div>
         </section>
+        <form className="settings-form settings-section" onSubmit={saveNotifications}>
+          <h3>Ping notifications</h3>
+          <p className="field-help">Receive short status notices only. Logs, prompts, code, and secrets are never included.</p>
+          {notificationPreferences && (
+            <div className="notification-options">
+              <NotificationToggle label="Codex finished a task" checked={notificationPreferences.turnComplete} disabled={!notificationsEnabled || notificationBusy} onChange={(checked) => setNotificationPreferences({ ...notificationPreferences, turnComplete: checked })} />
+              <NotificationToggle label="Codex needs approval" checked={notificationPreferences.approvalRequired} disabled={!notificationsEnabled || notificationBusy} onChange={(checked) => setNotificationPreferences({ ...notificationPreferences, approvalRequired: checked })} />
+              <NotificationToggle label="Project checks failed" checked={notificationPreferences.checkFailed} disabled={!notificationsEnabled || notificationBusy} onChange={(checked) => setNotificationPreferences({ ...notificationPreferences, checkFailed: checked })} />
+              <NotificationToggle label="Deploy or rollback finished" checked={notificationPreferences.deploymentResult} disabled={!notificationsEnabled || notificationBusy} onChange={(checked) => setNotificationPreferences({ ...notificationPreferences, deploymentResult: checked })} />
+            </div>
+          )}
+          {!notificationsEnabled && !notificationBusy && <p className="field-help">Ping is not configured on this server.</p>}
+          {notificationError && <p className="form-error">{notificationError}</p>}
+          {notificationSuccess && <p className="form-success">{notificationSuccess}</p>}
+          <div className="dialog-actions"><button className="primary" disabled={!notificationsEnabled || notificationBusy || !notificationPreferences}>{notificationBusy ? "Saving…" : "Save notifications"}</button></div>
+        </form>
         <form className="settings-form" onSubmit={submit}>
           <h3>Change password</h3>
           <p className="field-help">Use at least 12 characters. Your current device stays signed in.</p>
@@ -1004,6 +1077,10 @@ function SettingsDialog({ project, theme, onThemeChange, onClose }: { project: P
       </section>
     </div>
   );
+}
+
+function NotificationToggle({ label, checked, disabled, onChange }: { label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="notification-toggle"><span>{label}</span><input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} /></label>;
 }
 
 function StarterCards({ onChoose }: { onChoose: (text: string) => void }) {
@@ -1047,49 +1124,7 @@ function ApprovalCard({ approval, onDecision }: { approval: Approval; onDecision
   );
 }
 
-function Composer({ disabled, onSend, models, selectedModel, modelBusy, onModelChange }: {
-  disabled: boolean;
-  onSend: (text: string) => void;
-  models: CodexModel[];
-  selectedModel: string;
-  modelBusy: boolean;
-  onModelChange: (model: string) => void;
-}) {
-  const [text, setText] = useState("");
-  const defaultModel = models.find((model) => model.isDefault);
-  const selected = models.find((model) => model.model === selectedModel);
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const value = text.trim();
-    if (!value || disabled || modelBusy) return;
-    setText("");
-    onSend(value);
-  }
-  return (
-    <form className="composer" onSubmit={submit}>
-      <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Describe what you want to build…" rows={1} disabled={disabled} onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          event.currentTarget.form?.requestSubmit();
-        }
-      }} />
-      <button className="send-button" disabled={disabled || modelBusy || !text.trim()} aria-label="Send">↑</button>
-      <div className="composer-footer">
-        <small>Enter to send · Shift + Enter for a new line</small>
-        <label className="model-picker" title={selected?.description || defaultModel?.description || "Use the default model selected by Codex."}>
-          <span>Model</span>
-          <select value={selectedModel} disabled={disabled || modelBusy} onChange={(event) => onModelChange(event.target.value)} aria-label="Codex model for this session">
-            <option value="">{defaultModel ? `Auto · ${defaultModel.displayName}` : "Auto"}</option>
-            {selectedModel && !selected && <option value={selectedModel}>{selectedModel} · unavailable</option>}
-            {models.map((model) => <option key={model.model} value={model.model}>{model.displayName}</option>)}
-          </select>
-        </label>
-      </div>
-    </form>
-  );
-}
-
-function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: Project | null; thread: Thread | null; git: GitState | null; onRefresh: () => Promise<void>; onError: (message: string) => void }) {
+function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, onError }: { project: Project | null; thread: Thread | null; git: GitState | null; agentBusy: boolean; onAskCodex: (text: string) => Promise<boolean>; onRefresh: () => Promise<void>; onError: (message: string) => void }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
@@ -1285,6 +1320,7 @@ function ChangesPanel({ project, thread, git, onRefresh, onError }: { project: P
             {!changedFiles.length && <EmptySmall text="Working tree is clean." />}
           </div>
           {git?.diff && <details className="diff-block"><summary>View diff</summary><pre>{git.diff}</pre></details>}
+          <CheckPanel project={project} thread={thread} gitVersion={`${git?.branch ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} agentBusy={agentBusy} onAskCodex={onAskCodex} onError={onError} />
           <div className="commit-box">
             <label>Commit message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe this change" /></label>
             <button className="primary full" onClick={commit} disabled={busy || !changedFiles.length || !message.trim()}>{busy ? "Working…" : "Commit with device note"}</button>

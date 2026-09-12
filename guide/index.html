@@ -123,12 +123,14 @@
       <div class="workflow" role="list" aria-label="Alur penyimpanan code">
         <div role="listitem"><span>1</span><strong>Coding</strong><small>Berikan instruksi ke Codex</small></div><i>→</i>
         <div role="listitem"><span>2</span><strong>Review</strong><small>Lihat file dan diff</small></div><i>→</i>
-        <div role="listitem"><span>3</span><strong>Commit task</strong><small>Simpan checkpoint</small></div><i>→</i>
-        <div role="listitem"><span>4</span><strong>Merge main</strong><small>Gabungkan hasil final</small></div><i>→</i>
-        <div role="listitem"><span>5</span><strong>Push main</strong><small>Kirim ke GitHub</small></div><i>→</i>
-        <div role="listitem"><span>6</span><strong>Deploy</strong><small>Terbitkan aplikasi</small></div>
+        <div role="listitem"><span>3</span><strong>Run checks</strong><small>Lint, typecheck, test, build</small></div><i>→</i>
+        <div role="listitem"><span>4</span><strong>Commit task</strong><small>Simpan checkpoint</small></div><i>→</i>
+        <div role="listitem"><span>5</span><strong>Merge main</strong><small>Gabungkan hasil final</small></div><i>→</i>
+        <div role="listitem"><span>6</span><strong>Push main</strong><small>Kirim ke GitHub</small></div><i>→</i>
+        <div role="listitem"><span>7</span><strong>Deploy</strong><small>Terbitkan aplikasi</small></div>
       </div>
       <div class="two-column">
+        <article class="explain-card"><h3>Project checks &amp; Fix with Codex</h3><p>Tekan <b>Run</b> pada <b>Project checks</b>. Comote menjalankan script <code>lint</code>, <code>typecheck</code>, <code>test</code>, dan <code>build</code> yang tersedia. Bila ada yang gagal, buka output atau tekan <b>Fix with Codex</b>. Setelah code berubah, hasil lama ditandai agar Anda menjalankannya kembali.</p></article>
         <article class="explain-card"><h3>Commit task</h3><p>Isi <b>Commit message</b> dengan kalimat singkat seperti <code>feat: tambah halaman produk</code>, lalu tekan <b>Commit with device note</b>.</p><p>Commit otomatis mencatat perangkat, VPS, Codex, dan session asal.</p></article>
         <article class="explain-card"><h3>Push task vs Push main</h3><p><b>Push task branch</b> hanya mengirim cabang pekerjaan untuk backup/review. <b>Push main</b> mengirim versi resmi yang sudah digabungkan ke GitHub.</p></article>
         <article class="explain-card"><h3>Merge into main</h3><p>Lakukan setelah task bersih dan sudah di-commit. Jika ada konflik, Comote berhenti aman; minta Codex membantu menyelesaikannya.</p></article>
@@ -226,7 +228,7 @@
       <div class="mobile-gallery">
         <figure><img src="assets/05-mobile.png" alt="Tampilan utama Comote pada layar handphone" /><figcaption><b>Chat</b> — buat session dan bicara dengan Codex.</figcaption></figure>
         <figure><img src="assets/06-mobile-changes.png" alt="Panel Changes Comote pada layar handphone" /><figcaption><b>Changes</b> — commit, push, preview, dan deploy.</figcaption></figure>
-        <div class="mobile-tips"><h3>Tips nyaman dari HP</h3><ul><li>Tambahkan Comote ke Home Screen agar terasa seperti aplikasi.</li><li>Pilih <b>System</b>, <b>Light</b>, atau <b>Dark</b> dari Settings. Light memakai warna netral hangat, bukan putih terang.</li><li>Gunakan prompt singkat, lalu tambah detail bila hasil belum sesuai.</li><li>Review diff kecil lebih mudah daripada menunggu perubahan terlalu besar.</li><li>Untuk pekerjaan panjang, biarkan Codex bekerja lalu kembali ke session yang sama.</li><li>Jangan menutup Tailscale bila ingin membuka Comote atau preview privat.</li></ul></div>
+        <div class="mobile-tips"><h3>Tips nyaman dari HP</h3><ul><li>Tambahkan Comote ke Home Screen agar terasa seperti aplikasi.</li><li>Pilih <b>System</b>, <b>Light</b>, atau <b>Dark</b> dari Settings. Light memakai warna netral hangat, bukan putih terang.</li><li>Prompt yang belum dikirim tersimpan otomatis untuk session tersebut, termasuk setelah refresh.</li><li>Jika koneksi terputus, tunggu label <b>Reconnecting</b> hilang; Comote menyambung kembali secara otomatis.</li><li>Aktifkan notifikasi Ping dari Settings agar tahu saat Codex selesai atau meminta approval.</li><li>Review diff kecil lebih mudah daripada menunggu perubahan terlalu besar.</li><li>Jangan menutup Tailscale bila ingin membuka Comote atau preview privat.</li></ul></div>
       </div>
     </section>
 
@@ -250,6 +252,9 @@
         <details><summary>Import repository gagal</summary><p>Periksa URL GitHub. Public repository harus dapat dibuka tanpa login. Untuk private repository, akses GitHub perlu dikonfigurasi pada VPS.</p></details>
         <details><summary>Push gagal atau meminta login</summary><p>Repository tujuan belum memberikan akses tulis kepada SSH key/credential VPS, atau remote masih menggunakan metode autentikasi yang berbeda.</p></details>
         <details><summary>Preview tidak mau berjalan</summary><p>Minta Codex memasang dependency dan memastikan <code>package.json</code> memiliki script <code>dev</code> atau <code>start</code>. Baca Preview logs untuk detail.</p></details>
+        <details><summary>Project checks tidak tersedia</summary><p>Comote mencari script <code>lint</code>, <code>typecheck</code>, <code>test</code>, <code>build</code>, atau <code>check</code> di <code>package.json</code>. Minta Codex menambahkan script yang sesuai untuk framework project Anda.</p></details>
+        <details><summary>Project checks gagal</summary><p>Buka langkah yang merah untuk melihat output. Tekan <b>Fix with Codex</b> agar error dikirim ke session aktif, lalu jalankan checks kembali setelah Codex selesai.</p></details>
+        <details><summary>Notifikasi Ping terlalu banyak</summary><p>Buka Settings → <b>Ping notifications</b>. Anda dapat mematikan notifikasi Codex selesai, approval, checks gagal, atau hasil deploy secara terpisah.</p></details>
         <details><summary>Deploy production gagal</summary><p>Pastikan canonical branch bersih, dependency memiliki <code>package-lock.json</code>, required secret sudah disimpan, dan health check aplikasi berhasil.</p></details>
         <details><summary>Ada conflict saat Merge</summary><p>Jangan memaksa merge. Kembali ke session task dan minta: “Selesaikan conflict dengan main, jalankan test, lalu commit hasilnya.”</p></details>
         <details><summary>Indikator masih menampilkan Context —</summary><p>Ini normal untuk session lama yang belum memiliki data usage tersimpan. Kirim satu pesan dan tunggu Codex menyelesaikan jawabannya; persentase akan muncul setelah event token usage diterima.</p></details>
