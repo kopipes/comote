@@ -21,6 +21,7 @@ This file is the durable implementation checklist for agreed Comote work. It con
 
 ## Later
 
+- [ ] Add lightweight local codebase indexing with SQLite FTS: index files, symbols, routes, imports, schemas, and config; update incrementally from Git changes; exclude dependencies, build output, binaries, environment files, and secrets; expose a simple freshness indicator and manual refresh; give Codex a bounded relevant-file shortlist while requiring it to verify original source before editing.
 - [ ] Add private GitHub authentication for importing and pushing private application repositories.
 - [ ] Add an off-VPS encrypted backup destination.
 - [ ] Add passkey login as an optional alternative to Ping OTP/password.
