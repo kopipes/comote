@@ -10,6 +10,7 @@ const execFileAsync = promisify(execFile);
 const maxFiles = 5_000;
 const maxFileBytes = 256 * 1024;
 const maxIndexedBytes = 40 * 1024 * 1024;
+const indexVersion = "2";
 
 const ignoredDirectories = new Set([
   ".git", ".svn", ".hg", ".idea", ".vscode", ".cache", ".next", ".nuxt", ".output",
@@ -169,12 +170,13 @@ export class CodeIndexManager {
     const database = this.open(key);
     try {
       const previousFingerprint = readMeta(database, "fingerprint");
-      if (!force && previousFingerprint === scan.fingerprint) return statusFromDatabase(database, true, "Index is up to date.");
+      const versionChanged = readMeta(database, "indexVersion") !== indexVersion;
+      if (!force && !versionChanged && previousFingerprint === scan.fingerprint) return statusFromDatabase(database, true, "Index is up to date.");
 
       const rows = database.prepare("SELECT path, mtime_ms, size FROM documents").all() as unknown as DocumentRow[];
       const previous = new Map(rows.map((row) => [row.path, row]));
       const currentPaths = new Set(scan.files.map((file) => file.path));
-      const changed = force
+      const changed = force || versionChanged
         ? scan.files
         : scan.files.filter((file) => {
           const row = previous.get(file.path);
@@ -211,12 +213,14 @@ export class CodeIndexManager {
             binarySkipped += 1;
             continue;
           }
-          const metadata = extractMetadata(file.path, content);
-          upsert.run(file.path, file.mtimeMs, file.size, metadata.kind, metadata.symbols, metadata.imports, metadata.routes, metadata.schema, metadata.config, content);
-          insertSearch.run(file.path, content, metadata.symbols, metadata.imports, metadata.routes, metadata.schema, metadata.config);
+          const safeContent = redactSensitiveContent(content);
+          const metadata = extractMetadata(file.path, safeContent);
+          upsert.run(file.path, file.mtimeMs, file.size, metadata.kind, metadata.symbols, metadata.imports, metadata.routes, metadata.schema, metadata.config, safeContent);
+          insertSearch.run(file.path, safeContent, metadata.symbols, metadata.imports, metadata.routes, metadata.schema, metadata.config);
         }
         const updatedAt = new Date().toISOString();
         writeMeta(database, "fingerprint", scan.fingerprint);
+        writeMeta(database, "indexVersion", indexVersion);
         writeMeta(database, "skippedFiles", String(scan.skippedFiles + binarySkipped));
         writeMeta(database, "revision", scan.revision);
         writeMeta(database, "updatedAt", updatedAt);
@@ -313,6 +317,14 @@ function isIndexablePath(relativePath: string): boolean {
   const extension = path.extname(name);
   if (ignoredExtensions.has(extension)) return false;
   return allowedNames.has(name) || allowedExtensions.has(extension);
+}
+
+function redactSensitiveContent(content: string): string {
+  return content
+    .replace(/-----BEGIN [^-\r\n]*PRIVATE KEY-----[\s\S]*?-----END [^-\r\n]*PRIVATE KEY-----/gi, "[REDACTED PRIVATE KEY]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[opusr]_[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|pvc-webhook-[A-Za-z0-9]{16,})\b/g, "[REDACTED TOKEN]")
+    .replace(/((?:["']?(?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|private[_-]?key|webhook[_-]?token)["']?)\s*[:=]\s*)(["'`])([^"'`\r\n]{4,})\2/gi, "$1$2[REDACTED]$2")
+    .replace(/((?:api[_-]?key|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|private[_-]?key|webhook[_-]?token)\s*[:=]\s*)([^\s,;#]{8,})/gi, "$1[REDACTED]");
 }
 
 function extractMetadata(filePath: string, content: string): IndexedMetadata {
