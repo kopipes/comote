@@ -6,6 +6,7 @@ import { AttachmentStore } from "./attachments.js";
 import { loadConfig } from "./config.js";
 import { CodexClient } from "./codex-client.js";
 import { CheckManager } from "./checks.js";
+import { CodeIndexManager } from "./code-index.js";
 import { DeploymentManager } from "./deployment.js";
 import { EventHub } from "./event-hub.js";
 import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
@@ -47,6 +48,7 @@ const deployments = new DeploymentManager(config.dataDir, config.deployDomain, c
 const events = new EventHub();
 const notifications = new NotificationService(ping, notificationSettings, events);
 const checks = new CheckManager((project, state) => notifications.checkFinished(project.name, state.phase === "passed"));
+const codeIndex = new CodeIndexManager(config.dataDir);
 const threadUsage = new ThreadUsageStore(config.dataDir);
 const codex = new CodexClient(config, events, threadUsage);
 const threadModels = new ThreadModelStore(config.dataDir);
@@ -54,7 +56,7 @@ const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
 const mergingProjects = new Set<string>();
 const handoffThreads = new Set<string>();
 
-await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init(), notificationSettings.init(), projectNotes.init(), attachments.init()]);
+await Promise.all([sessions.init(), passwords.init(), projects.init(), worktrees.init(), deployments.init(), threadModels.init(), threadUsage.init(), notificationSettings.init(), projectNotes.init(), attachments.init(), codeIndex.init()]);
 deployments.subscribe((project, state, action) => notifications.deploymentFinished(project.name, state, action));
 
 const app = express();
@@ -186,12 +188,16 @@ app.post("/api/projects", requireCsrf, async (request, response) => {
   const mode = String(request.body?.mode ?? "");
   const name = typeof request.body?.name === "string" ? request.body.name : "";
   if (mode === "create") {
-    response.status(201).json({ project: await projects.create(name) });
+    const project = await projects.create(name);
+    response.status(201).json({ project });
+    void codeIndex.refresh(project.path).catch(() => undefined);
     return;
   }
   if (mode === "import") {
     const repositoryUrl = typeof request.body?.repositoryUrl === "string" ? request.body.repositoryUrl : "";
-    response.status(201).json({ project: await projects.importGithub(repositoryUrl, name) });
+    const project = await projects.importGithub(repositoryUrl, name);
+    response.status(201).json({ project });
+    void codeIndex.refresh(project.path).catch(() => undefined);
     return;
   }
   response.status(400).json({ error: "Mode must be create or import." });
@@ -214,6 +220,19 @@ app.get("/api/projects/:projectId/notes", async (request, response) => {
 app.post("/api/projects/:projectId/notes", requireCsrf, async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   response.json({ notes: await projectNotes.set(project.id, request.body?.notes) });
+});
+
+app.get("/api/projects/:projectId/index", async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const workspace = await indexWorkspace(project, queryString(request, "threadId"));
+  response.json(await codeIndex.refresh(workspace.path));
+});
+
+app.post("/api/projects/:projectId/index/refresh", requireCsrf, async (request, response) => {
+  const project = await projects.get(param(request, "projectId"));
+  const threadId = typeof request.body?.threadId === "string" ? request.body.threadId : "";
+  const workspace = await indexWorkspace(project, threadId);
+  response.json(await codeIndex.refresh(workspace.path, true));
 });
 
 app.get("/api/projects/:projectId/threads", async (request, response) => {
@@ -418,7 +437,11 @@ app.post("/api/projects/:projectId/threads/:threadId/messages", requireCsrf, asy
     return;
   }
   const messageAttachments = await attachments.resolve(project.id, threadId, request.body?.attachments);
-  const codexInput = buildCodexInput(text, projectNotes.get(project.id), messageAttachments);
+  const indexResult = await codeIndex.search(workspace.path, text).catch((error: Error) => {
+    console.error(`Could not search codebase index: ${error.message}`);
+    return { matches: [] };
+  });
+  const codexInput = buildCodexInput(text, projectNotes.get(project.id), messageAttachments, indexResult.matches);
   notifications.trackTurn(threadId, project.name);
   let turn: Record<string, unknown>;
   try {
@@ -674,6 +697,10 @@ function queryString(request: Request, key: string): string {
 
 function checkKey(projectId: string, threadId: string): string {
   return `${projectId}:${threadId || "canonical"}`;
+}
+
+async function indexWorkspace(project: Project, threadId: string): Promise<ThreadWorkspace> {
+  return threadId ? (await resolveThread(project, threadId)).workspace : worktrees.forThread(project);
 }
 
 function clientIp(request: Request): string {

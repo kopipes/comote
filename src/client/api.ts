@@ -56,6 +56,7 @@ export interface ThreadContextUsage {
 
 export interface GitState {
   branch: string;
+  revision: string;
   status: string;
   diff: string;
   isolated?: boolean;
@@ -90,6 +91,17 @@ export interface CheckState {
   finishedAt: string;
   message: string;
   stale: boolean;
+}
+
+export interface CodeIndexStatus {
+  phase: "ready" | "failed";
+  fresh: boolean;
+  indexedFiles: number;
+  indexedBytes: number;
+  skippedFiles: number;
+  revision: string;
+  updatedAt: string;
+  message: string;
 }
 
 export interface NotificationPreferences {

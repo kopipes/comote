@@ -12,12 +12,14 @@
     "password:hash": "tsx scripts/hash-password.ts"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.3",
     "@types/node": "^22.18.1",
     "@types/react": "^19.1.12",

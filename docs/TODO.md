@@ -18,10 +18,10 @@ This file is the durable implementation checklist for agreed Comote work. It con
 - [x] Add validated per-session screenshot and file attachments outside application repositories.
 - [x] Add redacted **Fix with Codex** actions for failed preview and deployment logs.
 - [x] Add an always-on safe VPS deployment rule that protects existing services, ports, proxies, and applications.
+- [x] Add lightweight local SQLite FTS codebase indexing with incremental workspace updates, sensitive/generated-file exclusions, a UI freshness indicator and manual refresh, and bounded verified-source hints for Codex.
 
 ## Later
 
-- [ ] Add lightweight local codebase indexing with SQLite FTS: index files, symbols, routes, imports, schemas, and config; update incrementally from Git changes; exclude dependencies, build output, binaries, environment files, and secrets; expose a simple freshness indicator and manual refresh; give Codex a bounded relevant-file shortlist while requiring it to verify original source before editing.
 - [ ] Add private GitHub authentication for importing and pushing private application repositories.
 - [ ] Add an off-VPS encrypted backup destination.
 - [ ] Add passkey login as an optional alternative to Ping OTP/password.

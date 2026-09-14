@@ -13,13 +13,14 @@ async function git(cwd: string, args: string[], extraEnvironment: NodeJS.Process
   return result.stdout.trim();
 }
 
-export async function gitStatus(cwd: string): Promise<{ branch: string; status: string; diff: string }> {
-  const [branch, status, diff] = await Promise.all([
+export async function gitStatus(cwd: string): Promise<{ branch: string; revision: string; status: string; diff: string }> {
+  const [branch, revision, status, diff] = await Promise.all([
     git(cwd, ["branch", "--show-current"]),
+    git(cwd, ["rev-parse", "--short=12", "HEAD"]).catch(() => "unborn"),
     git(cwd, ["status", "--short"]),
     git(cwd, ["diff", "--no-ext-diff", "--", "."]),
   ]);
-  return { branch: branch || "detached", status, diff: diff.slice(0, 500_000) };
+  return { branch: branch || "detached", revision, status, diff: diff.slice(0, 500_000) };
 }
 
 export async function gitCommit(

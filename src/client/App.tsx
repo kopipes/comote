@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { api, type Attachment, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
 import { CheckPanel } from "./CheckPanel";
+import { CodeIndexPanel } from "./CodeIndexPanel";
 import { Composer, draftStorageKey } from "./Composer";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
@@ -1373,7 +1374,8 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
             {!changedFiles.length && <EmptySmall text="Working tree is clean." />}
           </div>
           {git?.diff && <details className="diff-block"><summary>View diff</summary><pre>{git.diff}</pre></details>}
-          <CheckPanel project={project} thread={thread} gitVersion={`${git?.branch ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} agentBusy={agentBusy} onAskCodex={onAskCodex} onError={onError} />
+          <CodeIndexPanel project={project} thread={thread} gitVersion={`${git?.revision ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} onError={onError} />
+          <CheckPanel project={project} thread={thread} gitVersion={`${git?.revision ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} agentBusy={agentBusy} onAskCodex={onAskCodex} onError={onError} />
           <div className="commit-box">
             <label>Commit message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe this change" /></label>
             <button className="primary full" onClick={commit} disabled={busy || !changedFiles.length || !message.trim()}>{busy ? "Working…" : "Commit with device note"}</button>
