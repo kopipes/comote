@@ -3,31 +3,10 @@ import { api, type Attachment, type CodexModel, type DeploymentState, type GitSt
 import { CheckPanel } from "./CheckPanel";
 import { CodeIndexPanel } from "./CodeIndexPanel";
 import { Composer, draftStorageKey } from "./Composer";
+import { buildConversationTimeline, type ActivityItem, type Approval, type ChatMessage } from "./conversation";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  phase?: string;
-}
-
-interface ActivityItem {
-  id: string;
-  kind: "command" | "files";
-  title: string;
-  detail: string;
-  status: string;
-}
-
-interface Approval {
-  requestId: string;
-  reason: string;
-  command?: string;
-  cwd?: string;
-}
 
 export default function App() {
   const [session, setSession] = useState<AuthState>(undefined);
@@ -240,11 +219,45 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
   const [mobilePanel, setMobilePanel] = useState<"projects" | "chat" | "changes">("chat");
+  const [desktopNavigationView, setDesktopNavigationView] = useState<"projects" | "threads">("projects");
   const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "connected" | "reconnecting">("idle");
   const streamRef = useRef<EventSource | null>(null);
   const seenEventIdsRef = useRef(new Set<string>());
   const gitRequestRef = useRef(0);
   const modelRequestRef = useRef(0);
+  const feedOrderRef = useRef(0);
+  const messageScrollRef = useRef<HTMLDivElement | null>(null);
+  const followConversationRef = useRef(true);
+
+  const conversationTimeline = useMemo(
+    () => buildConversationTimeline(messages, activities, approvals),
+    [messages, activities, approvals],
+  );
+
+  useEffect(() => {
+    if (!followConversationRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = messageScrollRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationTimeline, running]);
+
+  function nextFeedOrder(): number {
+    feedOrderRef.current += 1;
+    return feedOrderRef.current;
+  }
+
+  function chooseProject(selected: Project) {
+    setProject(selected);
+    setDesktopNavigationView("threads");
+  }
+
+  function trackConversationScroll() {
+    const container = messageScrollRef.current;
+    if (!container) return;
+    followConversationRef.current = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+  }
 
   useEffect(() => {
     api.get<{ projects: Project[] }>("/api/projects")
@@ -283,6 +296,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setMessages([]);
     setActivities([]);
     setApprovals([]);
+    feedOrderRef.current = 0;
+    followConversationRef.current = true;
     setContextUsage(null);
     setCompacting(false);
     setContinuityNotice("");
@@ -354,7 +369,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     if (event.type === "assistant_delta") {
       const id = String(event.payload.itemId ?? "assistant-live");
       const delta = String(event.payload.text ?? "");
-      setMessages((current) => upsertDelta(current, id, delta));
+      const order = nextFeedOrder();
+      setMessages((current) => upsertDelta(current, id, delta, order));
     } else if (event.type === "item_started" || event.type === "item_completed") {
       const item = event.payload.item as ThreadItem | undefined;
       if (!item) return;
@@ -363,19 +379,27 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
         if (event.type === "item_completed") setContinuityNotice("Session context compacted successfully. You can continue in the same session.");
       }
       if (item.type === "agentMessage" && event.type === "item_completed") {
-        setMessages((current) => upsertMessage(current, { id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase }));
+        const order = nextFeedOrder();
+        setMessages((current) => upsertMessage(current, { id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase, order }));
       }
       if (item.type === "commandExecution" || item.type === "fileChange") {
-        setActivities((current) => upsertActivity(current, item));
+        const order = nextFeedOrder();
+        setActivities((current) => upsertActivity(current, item, order));
         if (event.type === "item_completed") void refreshGit();
       }
     } else if (event.type === "approval") {
-      setApprovals((current) => [...current.filter((item) => item.requestId !== event.payload.requestId), {
-        requestId: String(event.payload.requestId),
-        reason: String(event.payload.reason ?? "Codex needs approval."),
-        command: event.payload.command ? String(event.payload.command) : undefined,
-        cwd: event.payload.cwd ? String(event.payload.cwd) : undefined,
-      }]);
+      const order = nextFeedOrder();
+      setApprovals((current) => {
+        const requestId = String(event.payload.requestId);
+        const existing = current.find((item) => item.requestId === requestId);
+        return [...current.filter((item) => item.requestId !== requestId), {
+          requestId,
+          reason: String(event.payload.reason ?? "Codex needs approval."),
+          command: event.payload.command ? String(event.payload.command) : undefined,
+          cwd: event.payload.cwd ? String(event.payload.cwd) : undefined,
+          order: existing?.order ?? order,
+        }];
+      });
     } else if (event.type === "status") {
       const method = String(event.payload.method ?? "");
       if (method === "turn/started") setRunning(true);
@@ -405,6 +429,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       setMessages(extracted.messages);
       setActivities(extracted.activities);
       setApprovals([]);
+      feedOrderRef.current = extracted.lastOrder;
+      followConversationRef.current = true;
       setContextUsage(null);
       setCompacting(false);
       setContinuityNotice("");
@@ -428,6 +454,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       setMessages([]);
       setActivities([]);
       setApprovals([]);
+      feedOrderRef.current = 0;
+      followConversationRef.current = true;
       setContextUsage(null);
       setCompacting(false);
       setContinuityNotice("");
@@ -444,7 +472,9 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     if (!project || !thread) return false;
     const optimisticId = `local-${Date.now()}`;
     const displayText = attachments.length ? `${text}\n\nAttached: ${attachments.map((attachment) => attachment.name).join(", ")}` : text;
-    setMessages((current) => [...current, { id: optimisticId, role: "user", text: displayText }]);
+    followConversationRef.current = true;
+    const order = nextFeedOrder();
+    setMessages((current) => [...current, { id: optimisticId, role: "user", text: displayText, order }]);
     setRunning(true);
     setError("");
     try {
@@ -500,6 +530,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setProjects((current) => [...current.filter((item) => item.id !== next.id), next]
       .sort((a, b) => a.name.localeCompare(b.name)));
     setProject(next);
+    setDesktopNavigationView("threads");
     setAddingProject(false);
     setMobilePanel("chat");
   }
@@ -511,6 +542,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setMessages([]);
     setActivities([]);
     setApprovals([]);
+    feedOrderRef.current = 0;
+    followConversationRef.current = true;
     setContextUsage(null);
     setCompacting(false);
     setContinuityNotice("");
@@ -534,6 +567,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     setMessages([]);
     setActivities([]);
     setApprovals([]);
+    feedOrderRef.current = 0;
+    followConversationRef.current = true;
     setContextUsage(null);
     setCompacting(false);
     setContinuityNotice("Handoff complete. This fresh session is using the same task branch and files.");
@@ -556,6 +591,46 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
         </div>
       </header>
 
+      <aside className="desktop-navigation-pane">
+        {desktopNavigationView === "projects" ? (
+          <>
+            <div className="pane-heading">
+              <span>Projects <span className="count">{projects.length}</span></span>
+              <button className="new-button" onClick={() => setAddingProject(true)}>＋ Add</button>
+            </div>
+            <div className="project-list">
+              {projects.map((item) => (
+                <button key={item.id} className={`project-row ${project?.id === item.id ? "active" : ""}`} onClick={() => chooseProject(item)}>
+                  <span className="project-avatar">{item.name.slice(0, 2).toUpperCase()}</span>
+                  <span><strong>{item.name}</strong><small>VPS workspace</small></span>
+                </button>
+              ))}
+              {!projects.length && <EmptySmall text="No Git projects found in the workspace root." />}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="pane-heading navigation-thread-heading">
+              <button className="navigation-back" onClick={() => setDesktopNavigationView("projects")} aria-label="Back to projects">←</button>
+              <span>{showArchived ? "Archived" : project?.name ?? "Sessions"}</span>
+              <div className="pane-actions">
+                <button className="text-button" onClick={() => setShowArchived((current) => !current)} disabled={!project || busy}>{showArchived ? "Active" : "Archived"}</button>
+                {!showArchived && <button className="new-button" onClick={newThread} disabled={!project || busy}>＋ New</button>}
+              </div>
+            </div>
+            <div className="thread-list">
+              {threads.map((item) => (
+                <button key={item.id} className={`thread-row ${thread?.id === item.id ? "active" : ""}`} onClick={() => selectThread(item)}>
+                  <strong>{item.name || item.preview || "New session"}</strong>
+                  <small>{formatRelative(item.updatedAt ?? item.createdAt)}</small>
+                </button>
+              ))}
+              {project && !threads.length && <EmptySmall text={showArchived ? "No archived sessions." : "Start a session and describe what you want to build."} />}
+            </div>
+          </>
+        )}
+      </aside>
+
       <aside className="projects-pane">
         <div className="pane-heading">
           <span>Projects <span className="count">{projects.length}</span></span>
@@ -563,7 +638,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
         </div>
         <div className="project-list">
           {projects.map((item) => (
-            <button key={item.id} className={`project-row ${project?.id === item.id ? "active" : ""}`} onClick={() => setProject(item)}>
+            <button key={item.id} className={`project-row ${project?.id === item.id ? "active" : ""}`} onClick={() => chooseProject(item)}>
               <span className="project-avatar">{item.name.slice(0, 2).toUpperCase()}</span>
               <span><strong>{item.name}</strong><small>VPS workspace</small></span>
             </button>
@@ -607,14 +682,22 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
                 <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
               </div>
             </div>
-            <div className="message-scroll">
+            <div className="message-scroll" ref={messageScrollRef} onScroll={trackConversationScroll}>
               {showArchived && <div className="history-notice">This session is archived. Restore it from the session menu before continuing.</div>}
               {continuityNotice && <button className="history-notice continuity-notice" onClick={() => setContinuityNotice("")}>{continuityNotice}<span aria-hidden="true">×</span></button>}
               {thread.historyUnavailable && <div className="history-notice">This session can continue, but its earlier messages cannot be displayed by the current Codex server.</div>}
               {messages.length === 0 && !thread.historyUnavailable && !showArchived && <StarterCards onChoose={sendMessage} />}
-              {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
-              {activities.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}
-              {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={decide} />)}
+              {conversationTimeline.map((block) => {
+                if (block.kind === "message") return <MessageBubble key={`message-${block.message.id}`} message={block.message} />;
+                if (block.kind === "activity-group") {
+                  return block.activities.length === 1
+                    ? <ActivityCard key={`activity-${block.activities[0].id}`} activity={block.activities[0]} />
+                    : <ActivityGroup key={`activities-${block.activities[0].id}`} activities={block.activities} />;
+                }
+                return block.approvals.length === 1
+                  ? <ApprovalCard key={`approval-${block.approvals[0].requestId}`} approval={block.approvals[0]} onDecision={decide} />
+                  : <ApprovalGroup key={`approvals-${block.approvals[0].requestId}`} approvals={block.approvals} onDecision={decide} />;
+              })}
               {running && <div className="thinking"><span /><span /><span /> Codex is working</div>}
             </div>
             {!showArchived && <Composer key={draftStorageKey(project!.id, thread.id)} projectId={project!.id} threadId={thread.id} draftKey={draftStorageKey(project!.id, thread.id)} disabled={running} onSend={sendMessage} onError={setError} models={models} selectedModel={selectedModel} modelBusy={modelsLoading || modelBusy} onModelChange={chooseModel} />}
@@ -1154,6 +1237,33 @@ function ActivityCard({ activity }: { activity: ActivityItem }) {
   );
 }
 
+function ActivityGroup({ activities }: { activities: ActivityItem[] }) {
+  const [open, setOpen] = useState(activities.some((activity) => activity.status === "running"));
+  const failed = activities.filter((activity) => activity.status === "failed").length;
+  const running = activities.filter((activity) => activity.status === "running").length;
+  const summary = running
+    ? `${running} running`
+    : failed
+      ? `${failed} failed`
+      : "Completed";
+
+  useEffect(() => {
+    if (activities.some((activity) => activity.status === "running")) setOpen(true);
+  }, [activities]);
+
+  return (
+    <details className="activity-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span><strong>{activities.length} tool actions</strong><small>{summary}</small></span>
+        <span className="chevron">⌄</span>
+      </summary>
+      <div className="activity-group-items">
+        {activities.map((activity) => <ActivityCard key={activity.id} activity={activity} />)}
+      </div>
+    </details>
+  );
+}
+
 function ApprovalCard({ approval, onDecision }: { approval: Approval; onDecision: (approval: Approval, decision: "accept" | "decline") => void }) {
   return (
     <section className="approval-card">
@@ -1165,6 +1275,21 @@ function ApprovalCard({ approval, onDecision }: { approval: Approval; onDecision
         <button className="primary" onClick={() => onDecision(approval, "accept")}>Allow once</button>
       </div>
     </section>
+  );
+}
+
+function ApprovalGroup({ approvals, onDecision }: { approvals: Approval[]; onDecision: (approval: Approval, decision: "accept" | "decline") => void }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <details className="approval-group" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span><strong>{approvals.length} approvals required</strong><small>Review each request</small></span>
+        <span className="chevron">⌄</span>
+      </summary>
+      <div className="approval-group-items">
+        {approvals.map((approval) => <ApprovalCard key={approval.requestId} approval={approval} onDecision={onDecision} />)}
+      </div>
+    </details>
   );
 }
 
@@ -1493,22 +1618,23 @@ function EmptySmall({ text }: { text: string }) {
   return <p className="empty-small">{text}</p>;
 }
 
-function extractHistory(thread: Thread): { messages: ChatMessage[]; activities: ActivityItem[] } {
+function extractHistory(thread: Thread): { messages: ChatMessage[]; activities: ActivityItem[]; lastOrder: number } {
   const messages: ChatMessage[] = [];
   const activities: ActivityItem[] = [];
+  let order = 0;
   for (const turn of thread.turns ?? []) {
     for (const item of turn.items ?? []) {
       if (item.type === "userMessage") {
         const text = (item.content ?? []).filter((part) => part.type === "text").map((part) => part.text ?? "").join("\n");
-        messages.push({ id: item.id, role: "user", text: stripComoteContext(text) });
+        messages.push({ id: item.id, role: "user", text: stripComoteContext(text), order: ++order });
       } else if (item.type === "agentMessage") {
-        messages.push({ id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase });
+        messages.push({ id: item.id, role: "assistant", text: item.text ?? "", phase: item.phase, order: ++order });
       } else if (item.type === "commandExecution" || item.type === "fileChange") {
-        activities.push(activityFromItem(item));
+        activities.push(activityFromItem(item, ++order));
       }
     }
   }
-  return { messages, activities };
+  return { messages, activities, lastOrder: order };
 }
 
 function stripComoteContext(text: string): string {
@@ -1518,31 +1644,31 @@ function stripComoteContext(text: string): string {
   return text.slice(0, index);
 }
 
-function upsertDelta(messages: ChatMessage[], id: string, delta: string): ChatMessage[] {
+function upsertDelta(messages: ChatMessage[], id: string, delta: string, order: number): ChatMessage[] {
   const existing = messages.find((message) => message.id === id);
-  if (!existing) return [...messages, { id, role: "assistant", text: delta }];
+  if (!existing) return [...messages, { id, role: "assistant", text: delta, order }];
   return messages.map((message) => message.id === id ? { ...message, text: message.text + delta } : message);
 }
 
 function upsertMessage(messages: ChatMessage[], next: ChatMessage): ChatMessage[] {
   return messages.some((message) => message.id === next.id)
-    ? messages.map((message) => message.id === next.id ? next : message)
+    ? messages.map((message) => message.id === next.id ? { ...next, order: message.order } : message)
     : [...messages, next];
 }
 
-function upsertActivity(items: ActivityItem[], item: ThreadItem): ActivityItem[] {
-  const activity = activityFromItem(item);
+function upsertActivity(items: ActivityItem[], item: ThreadItem, order: number): ActivityItem[] {
+  const activity = activityFromItem(item, order);
   return items.some((current) => current.id === activity.id)
-    ? items.map((current) => current.id === activity.id ? activity : current)
+    ? items.map((current) => current.id === activity.id ? { ...activity, order: current.order } : current)
     : [...items, activity];
 }
 
-function activityFromItem(item: ThreadItem): ActivityItem {
+function activityFromItem(item: ThreadItem, order: number): ActivityItem {
   if (item.type === "commandExecution") {
-    return { id: item.id, kind: "command", title: item.command || "Command", detail: item.aggregatedOutput ?? "", status: item.status ?? "running" };
+    return { id: item.id, kind: "command", title: item.command || "Command", detail: item.aggregatedOutput ?? "", status: item.status ?? "running", order };
   }
   const paths = (item.changes ?? []).map((change) => `${change.kind}  ${change.path}`).join("\n");
-  return { id: item.id, kind: "files", title: `${item.changes?.length ?? 0} file changes`, detail: paths, status: item.status ?? "running" };
+  return { id: item.id, kind: "files", title: `${item.changes?.length ?? 0} file changes`, detail: paths, status: item.status ?? "running", order };
 }
 
 function detectDeviceName(): string {
