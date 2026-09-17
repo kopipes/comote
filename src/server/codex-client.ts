@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
+import { parseAccountUsage, type AccountUsage } from "./account-usage.js";
 import { withoutComoteEnvironment } from "./child-environment.js";
 import type { ComoteConfig } from "./config.js";
 import { EventHub } from "./event-hub.js";
@@ -85,6 +86,13 @@ export class CodexClient {
       cursor = result.nextCursor ?? null;
     } while (cursor);
     return [...new Map(models.map((model) => [model.model, model])).values()];
+  }
+
+  async accountUsage(): Promise<AccountUsage> {
+    const result = await this.request("account/rateLimits/read", {
+      excludeResetCreditDetails: true,
+    });
+    return parseAccountUsage(result);
   }
 
   async startThread(cwd: string): Promise<JsonObject> {

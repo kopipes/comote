@@ -54,6 +54,20 @@ export interface ThreadContextUsage {
   updatedAt: string;
 }
 
+export interface AccountUsageWindow {
+  usedPercent: number;
+  remainingPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}
+
+export interface AccountUsage {
+  ordinaryUsageAllowed: boolean | null;
+  fiveHour: AccountUsageWindow | null;
+  weekly: AccountUsageWindow | null;
+  updatedAt: string;
+}
+
 export interface GitState {
   branch: string;
   revision: string;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { api, type Attachment, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
+import { api, type AccountUsage, type AccountUsageWindow, type Attachment, type CodexModel, type DeploymentState, type GitState, type LiveEvent, type NotificationPreferences, type PreviewState, type Project, type Session, type Thread, type ThreadContextUsage, type ThreadItem } from "./api";
 import { CheckPanel } from "./CheckPanel";
 import { CodeIndexPanel } from "./CodeIndexPanel";
 import { Composer, draftStorageKey } from "./Composer";
@@ -209,6 +209,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelBusy, setModelBusy] = useState(false);
   const [contextUsage, setContextUsage] = useState<ThreadContextUsage | null>(null);
+  const [accountUsage, setAccountUsage] = useState<AccountUsage | null>(null);
   const [compacting, setCompacting] = useState(false);
   const [continuityNotice, setContinuityNotice] = useState("");
   const [git, setGit] = useState<GitState | null>(null);
@@ -275,6 +276,28 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       .catch((cause) => setError((cause as Error).message))
       .finally(() => setModelsLoading(false));
   }, []);
+
+  const refreshAccountUsage = useCallback(async () => {
+    try {
+      const { usage } = await api.get<{ usage: AccountUsage }>("/api/usage");
+      setAccountUsage(usage);
+    } catch {
+      setAccountUsage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAccountUsage();
+    const timer = window.setInterval(() => void refreshAccountUsage(), 60_000);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void refreshAccountUsage();
+    };
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [refreshAccountUsage]);
 
   const refreshGit = useCallback(async () => {
     const requestId = ++gitRequestRef.current;
@@ -417,6 +440,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
         setRunning(false);
         setCompacting(false);
         void refreshGit();
+        void refreshAccountUsage();
       }
     } else if (event.type === "context_usage") {
       const usage = event.payload.usage as ThreadContextUsage | undefined;
@@ -689,13 +713,16 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
         ) : (
           <>
             <div className="conversation-header">
-              <div><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
-              <div className="run-states">
-                {git?.isolated && <span className="task-state">Isolated task</span>}
-                {connectionState === "reconnecting" && <span className="connection-state">Reconnecting…</span>}
-                <ContextMeter usage={contextUsage} disabled={running || busy} onClick={() => setManagingSession(true)} />
-                <span className={`run-state ${running ? "running" : ""}`}>{compacting ? "Compacting" : running ? "Codex is working" : "Ready"}</span>
-                <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
+              <div className="conversation-title"><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
+              <div className="header-controls">
+                <div className="run-states">
+                  {git?.isolated && <span className="task-state" title="This session works in a separate Git task branch.">Branch: task</span>}
+                  {connectionState === "reconnecting" && <span className="connection-state">Reconnecting…</span>}
+                  <ContextMeter usage={contextUsage} disabled={running || busy} onClick={() => setManagingSession(true)} />
+                  <span className={`run-state ${running ? "running" : ""}`}>Codex: {compacting ? "Compacting" : running ? "Working" : "Ready"}</span>
+                  <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
+                </div>
+                <AccountUsageStrip usage={accountUsage} />
               </div>
             </div>
             <div className="message-scroll" ref={messageScrollRef} onScroll={trackConversationScroll}>
@@ -892,6 +919,41 @@ function ContextMeter({ usage, disabled, onClick }: { usage: ThreadContextUsage 
       <span>{label}</span>
     </button>
   );
+}
+
+function AccountUsageStrip({ usage }: { usage: AccountUsage | null }) {
+  if (!usage || (!usage.fiveHour && !usage.weekly)) return null;
+  return (
+    <div className="usage-limits" aria-label="Codex account usage limits">
+      {usage.ordinaryUsageAllowed === false && <strong className="usage-limit-alert">Usage limit reached</strong>}
+      {usage.fiveHour && <UsageLimitCard label="5-hour" window={usage.fiveHour} />}
+      {usage.weekly && <UsageLimitCard label="Weekly" window={usage.weekly} />}
+    </div>
+  );
+}
+
+function UsageLimitCard({ label, window }: { label: string; window: AccountUsageWindow }) {
+  const tone = window.remainingPercent <= 10 ? "critical" : window.remainingPercent <= 25 ? "watch" : "safe";
+  return (
+    <div className={`usage-limit ${tone}`} title={`${label} Codex allowance: ${window.remainingPercent}% remaining. ${formatUsageReset(window.resetsAt)}.`}>
+      <strong>{label} · {window.remainingPercent}% left</strong>
+      <span>{formatUsageReset(window.resetsAt)}</span>
+    </div>
+  );
+}
+
+function formatUsageReset(resetsAt: number | null): string {
+  if (!resetsAt) return "Reset time unavailable";
+  const date = new Date(resetsAt * 1_000);
+  const remainingMinutes = Math.ceil((date.getTime() - Date.now()) / 60_000);
+  if (!Number.isFinite(remainingMinutes)) return "Reset time unavailable";
+  if (remainingMinutes <= 0) return "Resetting now";
+  if (remainingMinutes < 24 * 60) {
+    const hours = Math.floor(remainingMinutes / 60);
+    const minutes = remainingMinutes % 60;
+    return `Resets in ${hours ? `${hours}h ` : ""}${minutes}m`;
+  }
+  return `Resets ${new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(date)}`;
 }
 
 function contextTone(usage: ThreadContextUsage | null): "unknown" | "safe" | "watch" | "high" {

@@ -180,6 +180,10 @@ app.get("/api/models", async (_request, response) => {
   response.json({ models: await codex.listModels() });
 });
 
+app.get("/api/usage", async (_request, response) => {
+  response.json({ usage: await codex.accountUsage() });
+});
+
 app.get("/api/projects", async (_request, response) => {
   response.json({ projects: await projects.list() });
 });
