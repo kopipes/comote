@@ -1423,6 +1423,25 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
     void refreshPreview();
   }, [refreshPreview]);
 
+  useEffect(() => {
+    if (!project || !preview?.running) return;
+    const timer = window.setInterval(() => void refreshPreview(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [project, preview?.running, refreshPreview]);
+
+  useEffect(() => {
+    if (!project) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshPreview();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [project, refreshPreview]);
+
   const refreshDeployment = useCallback(async () => {
     if (!project) {
       setDeployment(null);
@@ -1619,12 +1638,12 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
           </div>
           <div className="preview-box">
             <div><span className="eyebrow">Private preview</span><strong>{preview?.selected ? "This task is live" : preview?.error ? "Last preview failed" : preview?.running ? "Another task is live" : "Not running"}</strong></div>
-            {preview?.selected ? (
+            {preview?.selected && preview.ready ? (
               <div className="preview-actions">
                 <a className="primary" href={preview.url} target="_blank" rel="noreferrer">Open preview</a>
                 <button className="secondary" onClick={stopPreview} disabled={busy}>Stop</button>
               </div>
-            ) : <button className="secondary full" onClick={startPreview} disabled={busy || !thread}>{preview?.running ? "Replace with this task" : "Start preview"}</button>}
+            ) : <button className="secondary full" onClick={startPreview} disabled={busy || !thread}>{preview?.running ? "Replace with this task" : preview?.error ? "Restart preview" : "Start preview"}</button>}
             {preview?.command && <code>{preview.command}</code>}
             {preview?.logs && <details open={Boolean(preview.error)}><summary>Preview logs</summary><pre>{preview.logs}</pre></details>}
             {preview?.error && <button className="secondary full" onClick={() => void fixOperationalLogs("preview", `${preview.error}\n${preview.logs}`)} disabled={busy || agentBusy || !thread}>Fix preview with Codex</button>}

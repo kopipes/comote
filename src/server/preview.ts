@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { request } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Project } from "./projects.js";
 import type { ThreadWorkspace } from "./worktrees.js";
@@ -14,7 +14,10 @@ interface ActivePreview {
   logs: string;
   startedAt: string;
   ready: boolean;
+  recoveryAttempts: number;
 }
+
+type FailedPreview = Omit<ActivePreview, "child" | "ready"> & { error: string };
 
 export interface PreviewStatus {
   running: boolean;
@@ -29,15 +32,50 @@ export interface PreviewStatus {
 
 export class PreviewManager {
   private active: ActivePreview | null = null;
-  private lastFailure: (Omit<ActivePreview, "child" | "ready"> & { error: string }) | null = null;
+  private lastFailure: FailedPreview | null = null;
   private operation = Promise.resolve();
 
-  constructor(private readonly port: number, private readonly publicUrl: string) {}
+  constructor(private readonly port: number, private readonly publicUrl: string, private readonly stateFile = "") {}
+
+  restore(): Promise<void> {
+    return this.exclusive(async () => {
+      if (!this.stateFile || this.active) return;
+      const saved = await this.readSavedPreview();
+      if (!saved) return;
+      await this.launch(saved.projectId, saved.threadId, saved.cwd, 0);
+    });
+  }
 
   status(project: Project, threadId: string): PreviewStatus {
+    return this.publicStatus(project.id, threadId);
+  }
+
+  inspect(project: Project, threadId: string): Promise<PreviewStatus> {
+    return this.exclusive(async () => {
+      const active = this.active;
+      if (active && active.projectId === project.id && active.threadId === threadId && active.ready) {
+        if (await previewResponding(this.port)) return this.publicStatus(project.id, threadId);
+        const failure = failedPreview(active, "Preview stopped responding after it started.");
+        await this.stopActive();
+        this.lastFailure = failure;
+      }
+
+      const failed = this.lastFailure;
+      if (!this.active && failed?.projectId === project.id && failed.threadId === threadId && failed.recoveryAttempts < 1) {
+        try {
+          return await this.launch(failed.projectId, failed.threadId, failed.cwd, failed.recoveryAttempts + 1);
+        } catch {
+          return this.publicStatus(project.id, threadId);
+        }
+      }
+      return this.publicStatus(project.id, threadId);
+    });
+  }
+
+  private publicStatus(projectId: string, threadId: string): PreviewStatus {
     const active = this.active;
-    const selected = Boolean(active && active.projectId === project.id && active.threadId === threadId);
-    const failed = !selected && this.lastFailure?.projectId === project.id && this.lastFailure.threadId === threadId
+    const selected = Boolean(active && active.projectId === projectId && active.threadId === threadId);
+    const failed = !selected && this.lastFailure?.projectId === projectId && this.lastFailure.threadId === threadId
       ? this.lastFailure
       : null;
     return {
@@ -55,58 +93,67 @@ export class PreviewManager {
   start(project: Project, threadId: string, workspace: ThreadWorkspace): Promise<PreviewStatus> {
     return this.exclusive(async () => {
       await this.stopActive();
-      const launch = await detectPreviewLaunch(workspace.path, this.port);
-      const child = spawn(launch.executable, launch.args, {
-        cwd: workspace.path,
-        detached: true,
-        env: createPreviewEnvironment(this.port, this.publicUrl),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      const active: ActivePreview = {
-        projectId: project.id,
-        threadId,
-        cwd: workspace.path,
-        command: launch.display,
-        child,
-        logs: "",
-        startedAt: new Date().toISOString(),
-        ready: false,
-      };
-      this.active = active;
-      const append = (chunk: Buffer) => {
-        active.logs = `${active.logs}${stripAnsi(String(chunk))}`.slice(-40_000);
-      };
-      child.stdout?.on("data", append);
-      child.stderr?.on("data", append);
-      child.once("error", (error) => append(Buffer.from(`\n${error.message}\n`)));
-      child.once("exit", () => {
-        if (this.active?.child === child) this.active = null;
-      });
-
-      try {
-        await waitUntilReady(this.port, child, 30_000);
-        active.ready = true;
-        this.lastFailure = null;
-        return this.status(project, threadId);
-      } catch (error) {
-        const logs = active.logs.trim();
-        const message = `${(error as Error).message}${logs ? ` Last output: ${logs.slice(-1_000)}` : ""}`;
-        this.lastFailure = {
-          projectId: active.projectId,
-          threadId: active.threadId,
-          cwd: active.cwd,
-          command: active.command,
-          logs,
-          startedAt: active.startedAt,
-          error: message,
-        };
-        await this.stopActive();
-        throw new Error(message);
-      }
+      await this.forgetPreview();
+      return this.launch(project.id, threadId, workspace.path, 0);
     });
   }
 
+  private async launch(projectId: string, threadId: string, cwd: string, recoveryAttempts: number): Promise<PreviewStatus> {
+    const launch = await detectPreviewLaunch(cwd, this.port);
+    const child = spawn(launch.executable, launch.args, {
+      cwd,
+      detached: true,
+      env: createPreviewEnvironment(this.port, this.publicUrl),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const active: ActivePreview = {
+      projectId,
+      threadId,
+      cwd,
+      command: launch.display,
+      child,
+      logs: "",
+      startedAt: new Date().toISOString(),
+      ready: false,
+      recoveryAttempts,
+    };
+    this.active = active;
+    const append = (chunk: Buffer) => {
+      active.logs = `${active.logs}${stripAnsi(String(chunk))}`.slice(-40_000);
+    };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    child.once("error", (error) => append(Buffer.from(`\n${error.message}\n`)));
+    child.once("exit", (code, signal) => {
+      if (this.active?.child !== child) return;
+      const reason = `Preview process stopped unexpectedly${code === null ? "" : ` with code ${code}`}${signal ? ` (${signal})` : ""}.`;
+      this.lastFailure = failedPreview(active, reason);
+      this.active = null;
+    });
+
+    try {
+      await waitUntilReady(this.port, child, 30_000);
+      active.ready = true;
+      this.lastFailure = null;
+      await this.rememberPreview(active).catch((error: Error) => append(Buffer.from(`\nCould not persist preview state: ${error.message}\n`)));
+      return this.publicStatus(projectId, threadId);
+    } catch (error) {
+      const logs = active.logs.trim();
+      const message = `${(error as Error).message}${logs ? ` Last output: ${logs.slice(-1_000)}` : ""}`;
+      this.lastFailure = failedPreview(active, message);
+      await this.stopActive();
+      throw new Error(message);
+    }
+  }
+
   stop(): Promise<void> {
+    return this.exclusive(async () => {
+      await this.stopActive();
+      await this.forgetPreview();
+    });
+  }
+
+  shutdown(): Promise<void> {
     return this.exclusive(() => this.stopActive());
   }
 
@@ -127,6 +174,34 @@ export class PreviewManager {
       new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5_000)),
     ]);
     if (!exited) signalGroup(active.child.pid, "SIGKILL");
+  }
+
+  private async rememberPreview(active: ActivePreview): Promise<void> {
+    if (!this.stateFile) return;
+    await mkdir(path.dirname(this.stateFile), { recursive: true, mode: 0o700 });
+    const temporary = `${this.stateFile}.${process.pid}.tmp`;
+    await writeFile(temporary, JSON.stringify({ projectId: active.projectId, threadId: active.threadId, cwd: active.cwd }), { mode: 0o600 });
+    await rename(temporary, this.stateFile);
+  }
+
+  private async forgetPreview(): Promise<void> {
+    if (!this.stateFile) return;
+    await unlink(this.stateFile).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+
+  private async readSavedPreview(): Promise<{ projectId: string; threadId: string; cwd: string } | null> {
+    const raw = await readFile(this.stateFile, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof value.projectId !== "string" || !value.projectId || typeof value.threadId !== "string" || !value.threadId || typeof value.cwd !== "string" || !path.isAbsolute(value.cwd)) {
+      throw new Error("Saved preview state is invalid.");
+    }
+    return { projectId: value.projectId, threadId: value.threadId, cwd: value.cwd };
   }
 }
 
@@ -198,6 +273,34 @@ function waitUntilReady(port: number, child: ChildProcess, timeout: number): Pro
     };
     probe();
   });
+}
+
+function previewResponding(port: number, timeout = 1_500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const check = request({ hostname: "127.0.0.1", port, path: "/", method: "GET", timeout }, (response) => {
+      response.resume();
+      resolve(true);
+    });
+    check.once("timeout", () => {
+      check.destroy();
+      resolve(false);
+    });
+    check.once("error", () => resolve(false));
+    check.end();
+  });
+}
+
+function failedPreview(active: ActivePreview, error: string): FailedPreview {
+  return {
+    projectId: active.projectId,
+    threadId: active.threadId,
+    cwd: active.cwd,
+    command: active.command,
+    logs: active.logs.trim(),
+    startedAt: active.startedAt,
+    recoveryAttempts: active.recoveryAttempts,
+    error,
+  };
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {

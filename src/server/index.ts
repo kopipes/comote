@@ -43,7 +43,7 @@ const projectNotes = new ProjectNotesStore(config.dataDir);
 const attachments = new AttachmentStore(config.dataDir);
 const projects = new ProjectRegistry(config.projectsRoot);
 const worktrees = new WorktreeManager(config.dataDir);
-const previews = new PreviewManager(config.previewPort, config.previewUrl);
+const previews = new PreviewManager(config.previewPort, config.previewUrl, path.join(config.dataDir, "preview-state.json"));
 const deployments = new DeploymentManager(config.dataDir, config.deployDomain, config.deploySocket);
 const events = new EventHub();
 const notifications = new NotificationService(ping, notificationSettings, events);
@@ -602,7 +602,7 @@ app.get("/api/projects/:projectId/preview", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   const threadId = queryString(request, "threadId");
   if (threadId) await resolveThread(project, threadId);
-  response.json(previews.status(project, threadId));
+  response.json(await previews.inspect(project, threadId));
 });
 
 app.post("/api/projects/:projectId/preview/start", requireCsrf, async (request, response) => {
@@ -674,6 +674,7 @@ app.use((error: unknown, _request: Request, response: Response, _next: NextFunct
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`Comote listening on http://${config.host}:${config.port}`);
+  void previews.restore().catch((error: Error) => console.error(`Could not restore preview: ${error.message}`));
 });
 
 function sessionPayload(session: SessionRecord) {
@@ -814,7 +815,7 @@ function writeSse(response: Response, event: unknown): void {
 function shutdown(): void {
   codex.stop();
   checks.stop();
-  void previews.stop();
+  void previews.shutdown();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5_000).unref();
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -48,4 +48,36 @@ test("a failed preview keeps its diagnostic state for Fix with Codex", async () 
   assert.equal(status.running, false);
   assert.match(status.error, /Preview process exited/);
   assert.match(status.logs, /preview failed safely/);
+});
+
+test("an unavailable preview is restarted only once", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "comote-preview-recovery-"));
+  await mkdir(path.join(cwd, "node_modules"));
+  await writeFile(path.join(cwd, "package.json"), JSON.stringify({ scripts: { dev: "node fail.mjs" } }));
+  await writeFile(path.join(cwd, "fail.mjs"), `
+    import { readFileSync, writeFileSync } from "node:fs";
+    const counterPath = new URL("./attempt.txt", import.meta.url);
+    let attempt = 0;
+    try { attempt = Number(readFileSync(counterPath, "utf8")); } catch {}
+    attempt += 1;
+    writeFileSync(counterPath, String(attempt));
+    console.error("preview attempt " + attempt + " failed");
+    process.exit(23);
+  `);
+  const project = { id: "recovering-preview", name: "recovering-preview", path: cwd };
+  const manager = new PreviewManager(49_996, "https://preview.example.test");
+  try {
+    await assert.rejects(
+      manager.start(project, "preview-thread", { path: cwd, writableRoots: [cwd], isolated: false }),
+      /preview attempt 1 failed/,
+    );
+    const recovered = await manager.inspect(project, "preview-thread");
+    assert.equal(recovered.running, false);
+    assert.match(recovered.error, /preview attempt 2 failed/);
+    assert.equal(await readFile(path.join(cwd, "attempt.txt"), "utf8"), "2");
+    await manager.inspect(project, "preview-thread");
+    assert.equal(await readFile(path.join(cwd, "attempt.txt"), "utf8"), "2");
+  } finally {
+    await manager.stop();
+  }
 });
