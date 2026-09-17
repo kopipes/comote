@@ -15,7 +15,7 @@ This document records the active single-user deployment as of 2026-09-07. It int
 
 Tailscale Serve terminates private HTTPS and proxies to Comote on `127.0.0.1:4173`. Comote and Codex App Server have no public listener. UFW allows SSH publicly and allows the private Comote/preview HTTPS ports only on `tailscale0`; public ports 80/443 are reserved for deployed production applications.
 
-The optional project preview route uses a second tailnet-only HTTPS listener on port `8443`, proxied by Tailscale Serve to `127.0.0.1:4180`. Only one preview is active at a time. The preview does not pass Comote or Codex secrets into the child process, and its port is not opened on public interfaces.
+The optional project preview route uses a second tailnet-only HTTPS listener on port `8443`, proxied by Tailscale Serve to `127.0.0.1:4180`. Only one preview is active at a time. The preview does not pass Comote or Codex secrets into the child process, and its port is not opened on public interfaces. Comote derives the exact hostname from `COMOTE_PREVIEW_URL` and supplies it through Vite's additional-host environment setting, so proxied Vite previews accept the Tailscale hostname without weakening host validation globally.
 
 Production applications use the wildcard `*.apps.devop.my.id`, whose DNS-only A record points to this VPS. Nginx binds only to the VPS private/NAT interface address `10.0.3.25` on public ports 80/443, so Tailscale continues listening on its own address on port 443. Application processes bind to loopback ports 5200–5299 and are not opened by UFW.
 

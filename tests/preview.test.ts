@@ -16,14 +16,20 @@ test("preview launch detects a dev script and does not pass Comote secrets", asy
   const originalSecret = process.env.COMOTE_PASSWORD_HASH;
   process.env.COMOTE_PASSWORD_HASH = "must-not-leak";
   try {
-    const environment = createPreviewEnvironment(4180);
+    const environment = createPreviewEnvironment(4180, "https://comote-vps.tailb6b750.ts.net:8443/");
     assert.equal(environment.COMOTE_PASSWORD_HASH, undefined);
     assert.equal(environment.HOST, "127.0.0.1");
     assert.equal(environment.PORT, "4180");
+    assert.equal(environment.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, "comote-vps.tailb6b750.ts.net");
   } finally {
     if (originalSecret === undefined) delete process.env.COMOTE_PASSWORD_HASH;
     else process.env.COMOTE_PASSWORD_HASH = originalSecret;
   }
+});
+
+test("preview environment ignores invalid or non-HTTP public URLs", () => {
+  assert.equal(createPreviewEnvironment(4180, "not a URL").__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, undefined);
+  assert.equal(createPreviewEnvironment(4180, "file:///tmp/preview").__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS, undefined);
 });
 
 test("a failed preview keeps its diagnostic state for Fix with Codex", async () => {

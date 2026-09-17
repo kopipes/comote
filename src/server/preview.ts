@@ -59,7 +59,7 @@ export class PreviewManager {
       const child = spawn(launch.executable, launch.args, {
         cwd: workspace.path,
         detached: true,
-        env: createPreviewEnvironment(this.port),
+        env: createPreviewEnvironment(this.port, this.publicUrl),
         stdio: ["ignore", "pipe", "pipe"],
       });
       const active: ActivePreview = {
@@ -154,7 +154,7 @@ export async function detectPreviewLaunch(cwd: string, port: number): Promise<{ 
   return { executable: "npm", args, display: `npm ${args.join(" ")}` };
 }
 
-export function createPreviewEnvironment(port: number): NodeJS.ProcessEnv {
+export function createPreviewEnvironment(port: number, publicUrl = ""): NodeJS.ProcessEnv {
   const allowed = ["PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TERM"];
   const env: NodeJS.ProcessEnv = {};
   for (const key of allowed) if (process.env[key]) env[key] = process.env[key];
@@ -163,7 +163,18 @@ export function createPreviewEnvironment(port: number): NodeJS.ProcessEnv {
   env.PORT = String(port);
   env.BROWSER = "none";
   env.NODE_ENV = "development";
+  const publicHost = previewHostname(publicUrl);
+  if (publicHost) env.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS = publicHost;
   return env;
+}
+
+function previewHostname(publicUrl: string): string {
+  try {
+    const url = new URL(publicUrl);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.hostname : "";
+  } catch {
+    return "";
+  }
 }
 
 function waitUntilReady(port: number, child: ChildProcess, timeout: number): Promise<void> {

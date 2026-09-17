@@ -73,7 +73,7 @@ The currently deployed VPS topology and recovery commands are documented in [`do
 - Responsive mobile/desktop layout and installable PWA shell
 - Persistent System, Light, and Dark appearance modes; Light uses the warm neutral `#F7F6F3` base
 - Daily verified local recovery backups and a five-minute self-healing health probe on the VPS
-- One-click preview for Node projects through a private, dedicated Tailscale Serve URL
+- One-click preview for Node projects through a private, dedicated Tailscale Serve URL, including automatic Vite host authorization for that exact preview hostname
 - One-click **Fix preview with Codex** and **Fix deploy with Codex** actions using bounded, client-redacted operational logs
 - One-click local production deployment for npm projects, with isolated releases, persistent storage, SQLite/PostgreSQL/MySQL, private Redis, secrets, migrations, health checks, wildcard HTTPS, and rollback
 - Public illustrated user guide at `https://guide.apps.devop.my.id/`, also linked from the Comote header
