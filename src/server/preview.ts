@@ -146,7 +146,7 @@ export async function detectPreviewLaunch(cwd: string, port: number): Promise<{ 
   if (!script) throw new Error("No dev or start script was found in package.json.");
   const packages = { ...parsed.dependencies, ...parsed.devDependencies };
   const extra = packages.vite || parsed.scripts?.[script]?.includes("vite")
-    ? ["--", "--host", "127.0.0.1", "--port", String(port)]
+    ? ["--", "--host", "127.0.0.1", "--port", String(port), "--strictPort"]
     : packages.next || parsed.scripts?.[script]?.includes("next")
       ? ["--", "-H", "127.0.0.1", "-p", String(port)]
       : [];

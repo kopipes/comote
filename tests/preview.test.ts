@@ -11,7 +11,7 @@ test("preview launch detects a dev script and does not pass Comote secrets", asy
   await writeFile(path.join(cwd, "package.json"), JSON.stringify({ scripts: { dev: "vite" }, devDependencies: { vite: "latest" } }));
   const launch = await detectPreviewLaunch(cwd, 4180);
   assert.equal(launch.executable, "npm");
-  assert.deepEqual(launch.args, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4180"]);
+  assert.deepEqual(launch.args, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4180", "--strictPort"]);
 
   const originalSecret = process.env.COMOTE_PASSWORD_HASH;
   process.env.COMOTE_PASSWORD_HASH = "must-not-leak";
