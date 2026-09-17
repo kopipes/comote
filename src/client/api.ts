@@ -59,8 +59,22 @@ export interface GitState {
   revision: string;
   status: string;
   diff: string;
+  tracking: GitTrackingState;
   isolated?: boolean;
   baseBranch?: string;
+  unmergedCommits: number;
+  base: {
+    branch: string;
+    revision: string;
+    dirty: boolean;
+    tracking: GitTrackingState;
+  };
+}
+
+export interface GitTrackingState {
+  upstream: string;
+  ahead: number;
+  behind: number;
 }
 
 export interface PreviewState {

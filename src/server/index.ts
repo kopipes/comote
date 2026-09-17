@@ -9,7 +9,7 @@ import { CheckManager } from "./checks.js";
 import { CodeIndexManager } from "./code-index.js";
 import { DeploymentManager } from "./deployment.js";
 import { EventHub } from "./event-hub.js";
-import { gitCommit, gitMergeTask, gitPush, gitStatus } from "./git.js";
+import { gitCommit, gitMergeTask, gitPush, gitStatus, gitUnmergedCommitCount } from "./git.js";
 import { PasswordStore } from "./password.js";
 import { OtpStore } from "./otp.js";
 import { NotificationSettingsStore } from "./notification-settings.js";
@@ -530,7 +530,24 @@ app.get("/api/projects/:projectId/git", async (request, response) => {
   const project = await projects.get(param(request, "projectId"));
   const threadId = queryString(request, "threadId");
   const workspace = threadId ? (await resolveThread(project, threadId)).workspace : await worktrees.forThread(project);
-  response.json({ ...await gitStatus(workspace.path), isolated: workspace.isolated, baseBranch: workspace.baseBranch });
+  const repository = await gitStatus(workspace.path);
+  const base = workspace.isolated ? await gitStatus(project.path) : repository;
+  const baseBranch = workspace.baseBranch ?? base.branch;
+  const unmergedCommits = workspace.isolated
+    ? await gitUnmergedCommitCount(workspace.path, baseBranch)
+    : 0;
+  response.json({
+    ...repository,
+    isolated: workspace.isolated,
+    baseBranch,
+    unmergedCommits,
+    base: {
+      branch: base.branch,
+      revision: base.revision,
+      dirty: Boolean(base.status),
+      tracking: base.tracking,
+    },
+  });
 });
 
 app.post("/api/projects/:projectId/git/commit", requireCsrf, async (request, response) => {

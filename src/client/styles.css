@@ -600,6 +600,17 @@ button:not(:disabled):active { transform: translateY(1px); }
 .commit-box { display: grid; gap: 9px; margin: 22px 12px; padding-top: 18px; border-top: 1px solid var(--line); }
 .commit-box textarea { font-size: 11px; }
 .commit-box button { font-size: 11px; }
+.git-workflow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 4px; }
+.workflow-indicator { min-width: 0; display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 2px 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); padding: 8px 7px; }
+.workflow-indicator > span { grid-row: 1 / 3; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 50%; background: var(--line); color: var(--muted); font-size: 9px; font-weight: 800; }
+.workflow-indicator strong, .workflow-indicator small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-indicator strong { font-size: 9px; }
+.workflow-indicator small { color: var(--subtle); font-size: 7px; }
+.workflow-indicator.complete { border-color: var(--state-line); }
+.workflow-indicator.complete > span { background: var(--mint-dark); color: var(--mint); }
+.workflow-indicator.pending { border-color: var(--approval-line); }
+.workflow-indicator.pending > span { background: var(--approval-bg); color: var(--amber); }
+.workflow-complete-button:disabled { border-color: var(--state-line); background: var(--mint-dark); color: var(--mint); opacity: 1; }
 .checks-box { display: grid; gap: 9px; margin: 18px 12px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
 .code-index-box { display: grid; gap: 8px; margin: 18px 12px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); }
 .code-index-heading, .code-index-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

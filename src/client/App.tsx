@@ -4,6 +4,7 @@ import { CheckPanel } from "./CheckPanel";
 import { CodeIndexPanel } from "./CodeIndexPanel";
 import { Composer, draftStorageKey } from "./Composer";
 import { buildConversationTimeline, retainPendingApprovals, type ActivityItem, type Approval, type ChatMessage } from "./conversation";
+import { gitWorkflowState, type WorkflowStep } from "./git-workflow";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
@@ -1308,6 +1309,16 @@ function ApprovalGroup({ approvals, onDecision }: { approvals: Approval[]; onDec
   );
 }
 
+function WorkflowIndicator({ label, step }: { label: string; step: WorkflowStep }) {
+  return (
+    <div className={`workflow-indicator ${step.phase}`} title={step.detail}>
+      <span aria-hidden="true">{step.phase === "complete" ? "✓" : step.phase === "pending" ? "•" : "–"}</span>
+      <strong>{label}</strong>
+      <small>{step.detail}</small>
+    </div>
+  );
+}
+
 function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, onError }: { project: Project | null; thread: Thread | null; git: GitState | null; agentBusy: boolean; onAskCodex: (text: string) => Promise<boolean>; onRefresh: () => Promise<void>; onError: (message: string) => void }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1316,6 +1327,7 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
   const [deploySlug, setDeploySlug] = useState("");
   const [secretDraft, setSecretDraft] = useState("");
   const changedFiles = useMemo(() => git?.status.split("\n").filter(Boolean) ?? [], [git?.status]);
+  const workflow = useMemo(() => gitWorkflowState(git), [git]);
 
   const refreshPreview = useCallback(async () => {
     if (!project) {
@@ -1517,11 +1529,16 @@ function ChangesPanel({ project, thread, git, agentBusy, onAskCodex, onRefresh, 
           <CodeIndexPanel project={project} thread={thread} gitVersion={`${git?.revision ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} onError={onError} />
           <CheckPanel project={project} thread={thread} gitVersion={`${git?.revision ?? ""}\n${git?.status ?? ""}\n${git?.diff ?? ""}`} agentBusy={agentBusy} onAskCodex={onAskCodex} onError={onError} />
           <div className="commit-box">
+            <div className="git-workflow" aria-label="Git workflow status">
+              <WorkflowIndicator label="Commit" step={workflow.commit} />
+              {git?.isolated && <WorkflowIndicator label={`Merge ${git.baseBranch ?? "main"}`} step={workflow.merge!} />}
+              <WorkflowIndicator label={`Push ${git?.isolated ? git.baseBranch ?? "main" : git?.branch ?? "branch"}`} step={workflow.pushMain} />
+            </div>
             <label>Commit message<textarea rows={3} value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Describe this change" /></label>
-            <button className="primary full" onClick={commit} disabled={busy || !changedFiles.length || !message.trim()}>{busy ? "Working…" : "Commit with device note"}</button>
-            {git?.isolated && <button className="secondary full" onClick={merge} disabled={busy || Boolean(changedFiles.length)}>Merge into {git.baseBranch ?? "main"}</button>}
-            {git?.isolated && <button className="secondary full" onClick={pushCanonical} disabled={busy}>Push {git.baseBranch ?? "main"}</button>}
-            <button className="secondary full" onClick={push} disabled={busy}>{git?.isolated ? "Push task branch" : "Push branch"}</button>
+            <button className={`primary full ${workflow.commit.phase === "complete" ? "workflow-complete-button" : ""}`} onClick={commit} disabled={busy || workflow.commit.phase !== "pending" || !message.trim()}>{busy ? "Working…" : workflow.commit.phase === "complete" ? "✓ Changes committed" : "Commit with device note"}</button>
+            {git?.isolated && <button className={`secondary full ${workflow.merge?.phase === "complete" ? "workflow-complete-button" : ""}`} onClick={merge} disabled={busy || workflow.merge?.phase !== "pending"}>{workflow.merge?.phase === "complete" ? `✓ Merged into ${git.baseBranch ?? "main"}` : `Merge into ${git.baseBranch ?? "main"}`}</button>}
+            {git?.isolated && <button className={`secondary full ${workflow.pushMain.phase === "complete" ? "workflow-complete-button" : ""}`} onClick={pushCanonical} disabled={busy || workflow.pushMain.phase !== "pending"}>{workflow.pushMain.phase === "complete" ? `✓ ${git.baseBranch ?? "main"} pushed to GitHub` : workflow.pushMain.phase === "blocked" ? workflow.pushMain.detail : `Push ${git.baseBranch ?? "main"}${git.base.tracking.ahead ? ` (${git.base.tracking.ahead})` : ""}`}</button>}
+            <button className={`secondary full ${workflow.pushTask.phase === "complete" ? "workflow-complete-button" : ""}`} onClick={push} disabled={busy || workflow.pushTask.phase !== "pending"}>{workflow.pushTask.phase === "complete" ? `✓ ${git?.isolated ? "Task branch" : "Branch"} pushed` : workflow.pushTask.phase === "blocked" ? workflow.pushTask.detail : `${git?.isolated ? "Push task branch (optional)" : "Push branch"}${git?.tracking.ahead ? ` (${git.tracking.ahead})` : ""}`}</button>
           </div>
           <div className="preview-box">
             <div><span className="eyebrow">Private preview</span><strong>{preview?.selected ? "This task is live" : preview?.error ? "Last preview failed" : preview?.running ? "Another task is live" : "Not running"}</strong></div>

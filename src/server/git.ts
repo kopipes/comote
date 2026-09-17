@@ -4,6 +4,20 @@ import { withoutComoteEnvironment } from "./child-environment.js";
 
 const execFileAsync = promisify(execFile);
 
+export interface GitTrackingState {
+  upstream: string;
+  ahead: number;
+  behind: number;
+}
+
+export interface GitRepositoryState {
+  branch: string;
+  revision: string;
+  status: string;
+  diff: string;
+  tracking: GitTrackingState;
+}
+
 async function git(cwd: string, args: string[], extraEnvironment: NodeJS.ProcessEnv = {}): Promise<string> {
   const result = await execFileAsync("git", ["-C", cwd, ...args], {
     timeout: 60_000,
@@ -13,14 +27,35 @@ async function git(cwd: string, args: string[], extraEnvironment: NodeJS.Process
   return result.stdout.trim();
 }
 
-export async function gitStatus(cwd: string): Promise<{ branch: string; revision: string; status: string; diff: string }> {
-  const [branch, revision, status, diff] = await Promise.all([
+export async function gitStatus(cwd: string): Promise<GitRepositoryState> {
+  const [branch, revision, status, diff, upstream] = await Promise.all([
     git(cwd, ["branch", "--show-current"]),
     git(cwd, ["rev-parse", "--short=12", "HEAD"]).catch(() => "unborn"),
     git(cwd, ["status", "--short"]),
     git(cwd, ["diff", "--no-ext-diff", "--", "."]),
+    git(cwd, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]).catch(() => ""),
   ]);
-  return { branch: branch || "detached", revision, status, diff: diff.slice(0, 500_000) };
+  const tracking = upstream
+    ? parseDivergence(upstream, await git(cwd, ["rev-list", "--left-right", "--count", `${upstream}...HEAD`]))
+    : { upstream: "", ahead: 0, behind: 0 };
+  return { branch: branch || "detached", revision, status, diff: diff.slice(0, 500_000), tracking };
+}
+
+export async function gitUnmergedCommitCount(cwd: string, baseBranch: string): Promise<number> {
+  const value = await git(cwd, ["rev-list", "--count", `${baseBranch}..HEAD`]);
+  const count = Number.parseInt(value, 10);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+export function parseDivergence(upstream: string, value: string): GitTrackingState {
+  const [behindValue = "0", aheadValue = "0"] = value.trim().split(/\s+/);
+  const behind = Number.parseInt(behindValue, 10);
+  const ahead = Number.parseInt(aheadValue, 10);
+  return {
+    upstream,
+    behind: Number.isFinite(behind) && behind > 0 ? behind : 0,
+    ahead: Number.isFinite(ahead) && ahead > 0 ? ahead : 0,
+  };
 }
 
 export async function gitCommit(
