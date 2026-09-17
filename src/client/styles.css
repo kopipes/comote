@@ -426,7 +426,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .conversation-title { min-width: 0; flex: 1 1 auto; }
 .conversation-header h2 { margin: 0; max-width: 620px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; letter-spacing: -.02em; }
 .conversation-header .eyebrow { margin-bottom: 5px; }
-.header-controls { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.header-controls { flex: 0 0 auto; display: grid; justify-items: end; gap: 6px; }
 .run-state { flex: 0 0 auto; border: 1px solid var(--line-bright); border-radius: 999px; padding: 7px 10px; color: var(--muted); font-size: 10px; }
 .run-state.running { border-color: var(--state-line); background: var(--mint-dark); color: var(--mint); }
 .connection-state { flex: 0 0 auto; border: 1px solid var(--notice-line); border-radius: 999px; background: var(--notice-bg); color: var(--notice-ink); padding: 6px 9px; font-size: 9px; font-weight: 750; }
@@ -438,7 +438,16 @@ button:not(:disabled):active { transform: translateY(1px); }
 .context-meter.watch { border-color: var(--notice-line); color: var(--amber); }
 .context-meter.high { border-color: var(--danger-line); color: var(--danger); }
 .context-meter-ring { --context-progress: 0%; width: 10px; height: 10px; border-radius: 50%; background: conic-gradient(currentColor var(--context-progress), var(--line-bright) 0); box-shadow: inset 0 0 0 2px var(--panel); }
-.usage-limits { display: none; }
+.usage-limits { min-width: 0; display: flex; justify-content: flex-end; gap: 6px; }
+.usage-limit { min-width: 132px; min-height: 32px; display: grid; align-content: center; gap: 1px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); padding: 5px 9px; }
+.usage-limit strong, .usage-limit span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-limit strong { color: var(--muted); font-size: 10px; }
+.usage-limit span { color: var(--subtle); font-size: 9px; }
+.usage-limit.watch { border-color: var(--notice-line); }
+.usage-limit.watch strong { color: var(--amber); }
+.usage-limit.critical { border-color: var(--danger-line); background: var(--danger-bg); }
+.usage-limit.critical strong { color: var(--danger); }
+.usage-limit-alert { align-self: center; border: 1px solid var(--danger-line); border-radius: 9px; background: var(--danger-bg); color: var(--danger); padding: 8px 10px; font-size: 11px; text-align: center; }
 
 .message-scroll {
   flex: 1;
