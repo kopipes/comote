@@ -89,9 +89,7 @@ export class CodexClient {
   }
 
   async accountUsage(): Promise<AccountUsage> {
-    const result = await this.request("account/rateLimits/read", {
-      excludeResetCreditDetails: true,
-    });
+    const result = await this.request("account/rateLimits/read");
     return parseAccountUsage(result);
   }
 
@@ -306,13 +304,13 @@ export class CodexClient {
     }
   }
 
-  private async request<T = JsonObject>(method: string, params: JsonObject = {}): Promise<T> {
+  private async request<T = JsonObject>(method: string, params?: JsonObject): Promise<T> {
     await this.ensureStarted();
     this.touch();
     return this.rawRequest<T>(method, params);
   }
 
-  private rawRequest<T = JsonObject>(method: string, params: JsonObject): Promise<T> {
+  private rawRequest<T = JsonObject>(method: string, params?: JsonObject): Promise<T> {
     const id = ++this.requestId;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -324,7 +322,7 @@ export class CodexClient {
         reject,
         timer,
       });
-      this.write({ method, id, params });
+      this.write(buildCodexRequest(method, id, params));
     });
   }
 
@@ -502,6 +500,10 @@ function parseModel(value: JsonObject): CodexModel | null {
 
 export function createCodexEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return withoutComoteEnvironment(environment);
+}
+
+export function buildCodexRequest(method: string, id: number, params?: JsonObject): JsonObject {
+  return params === undefined ? { method, id } : { method, id, params };
 }
 
 export function buildApprovalResponse(

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildApprovalResponse, createCodexEnvironment } from "../src/server/codex-client.js";
+import { buildApprovalResponse, buildCodexRequest, createCodexEnvironment } from "../src/server/codex-client.js";
 
 test("Codex receives its own environment without Comote secrets", () => {
   assert.deepEqual(createCodexEnvironment({
@@ -13,6 +13,18 @@ test("Codex receives its own environment without Comote secrets", () => {
     PATH: "/usr/bin",
     HOME: "/home/coder",
     OPENAI_API_KEY: "needed-by-codex",
+  });
+});
+
+test("parameterless Codex methods omit params for older app-server versions", () => {
+  assert.deepEqual(buildCodexRequest("account/rateLimits/read", 7), {
+    method: "account/rateLimits/read",
+    id: 7,
+  });
+  assert.deepEqual(buildCodexRequest("thread/read", 8, { threadId: "thread-one" }), {
+    method: "thread/read",
+    id: 8,
+    params: { threadId: "thread-one" },
   });
 });
 

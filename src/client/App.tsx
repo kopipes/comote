@@ -210,6 +210,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   const [modelBusy, setModelBusy] = useState(false);
   const [contextUsage, setContextUsage] = useState<ThreadContextUsage | null>(null);
   const [accountUsage, setAccountUsage] = useState<AccountUsage | null>(null);
+  const [accountUsageUnavailable, setAccountUsageUnavailable] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [continuityNotice, setContinuityNotice] = useState("");
   const [git, setGit] = useState<GitState | null>(null);
@@ -281,8 +282,9 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
     try {
       const { usage } = await api.get<{ usage: AccountUsage }>("/api/usage");
       setAccountUsage(usage);
+      setAccountUsageUnavailable(false);
     } catch {
-      setAccountUsage(null);
+      setAccountUsageUnavailable(true);
     }
   }, []);
 
@@ -723,7 +725,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
                   <span className={`run-state ${running ? "running" : ""}`}>Codex: {compacting ? "Compacting" : running ? "Working" : "Ready"}</span>
                   <button className="icon-button session-menu-button" onClick={() => setManagingSession(true)} disabled={running || busy} title="Session options" aria-label="Session options">•••</button>
                 </div>
-                <AccountUsageStrip usage={accountUsage} />
+                <AccountUsageStrip usage={accountUsage} unavailable={accountUsageUnavailable} />
               </div>
             </div>
             <div className="message-scroll" ref={messageScrollRef} onScroll={trackConversationScroll}>
@@ -922,8 +924,16 @@ function ContextMeter({ usage, disabled, onClick }: { usage: ThreadContextUsage 
   );
 }
 
-function AccountUsageStrip({ usage }: { usage: AccountUsage | null }) {
-  if (!usage || (!usage.fiveHour && !usage.weekly)) return null;
+function AccountUsageStrip({ usage, unavailable }: { usage: AccountUsage | null; unavailable: boolean }) {
+  if (!usage || (!usage.fiveHour && !usage.weekly)) {
+    const status = unavailable ? "Usage unavailable · retrying" : "Loading usage…";
+    return (
+      <div className="usage-limits" aria-label="Codex account usage limits">
+        <UsageLimitPlaceholder label="5-hour" status={status} />
+        <UsageLimitPlaceholder label="Weekly" status={status} />
+      </div>
+    );
+  }
   return (
     <div className="usage-limits" aria-label="Codex account usage limits">
       {usage.ordinaryUsageAllowed === false && <strong className="usage-limit-alert">Usage limit reached</strong>}
@@ -931,6 +941,10 @@ function AccountUsageStrip({ usage }: { usage: AccountUsage | null }) {
       {usage.weekly && <UsageLimitCard label="Weekly" window={usage.weekly} />}
     </div>
   );
+}
+
+function UsageLimitPlaceholder({ label, status }: { label: string; status: string }) {
+  return <div className="usage-limit unknown"><strong>{label}</strong><span>{status}</span></div>;
 }
 
 function UsageLimitCard({ label, window }: { label: string; window: AccountUsageWindow }) {
