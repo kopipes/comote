@@ -704,62 +704,117 @@ button:not(:disabled):active { transform: translateY(1px); }
     min-width: 0;
     display: grid;
     grid-template-columns: 1fr;
-    grid-template-rows: 54px minmax(0, 1fr) 58px;
+    grid-template-rows: 60px minmax(0, 1fr) calc(68px + env(safe-area-inset-bottom));
     grid-template-areas: "header" "content" "nav";
   }
-  .topbar { grid-area: header; padding: 0 13px; }
-  .topbar .brand { font-size: 17px; }
-  .topbar .brand-mark { width: 30px; height: 30px; }
+  .topbar { grid-area: header; padding: 0 12px; }
+  .topbar .brand { gap: 8px; font-size: 18px; }
+  .topbar .brand-mark { width: 34px; height: 34px; }
+  .topbar-meta { gap: 2px; }
+  .topbar .icon-button { width: 38px; height: 38px; font-size: 20px; }
   .private-badge, .device-name { display: none; }
   .projects-pane, .threads-pane, .conversation-pane, .changes-pane { grid-area: content; border: 0; display: none; }
   .desktop-navigation-pane { display: none; }
-  .app-shell[data-panel="projects"] .projects-pane,
-  .app-shell[data-panel="projects"] .threads-pane,
+  .app-shell[data-panel="projects"][data-navigation="projects"] .projects-pane,
+  .app-shell[data-panel="projects"][data-navigation="threads"] .threads-pane,
   .app-shell[data-panel="chat"] .conversation-pane,
   .app-shell[data-panel="changes"] .changes-pane { display: block; }
-  .app-shell[data-panel="projects"] .projects-pane { width: 42%; border-right: 1px solid var(--line); }
-  .app-shell[data-panel="projects"] .threads-pane { display: block; margin-left: 42%; }
+  .projects-pane, .threads-pane { width: 100%; overflow: hidden; }
   .conversation-pane { display: none; }
   .app-shell[data-panel="chat"] .conversation-pane { display: flex; }
   .changes-pane { overflow: hidden; }
-  .mobile-nav { grid-area: nav; display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); background: var(--side-panel); padding-bottom: env(safe-area-inset-bottom); }
-  .mobile-nav button { border: 0; background: transparent; color: var(--subtle); font-size: 10px; font-weight: 650; }
-  .mobile-nav button.active { color: var(--mint); }
-  .conversation-header { min-width: 0; min-height: 0; flex-direction: column; align-items: stretch; gap: 9px; padding: 11px 14px 12px; overflow: visible; }
+  .mobile-nav { grid-area: nav; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; border-top: 1px solid var(--line); background: var(--side-panel); padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); }
+  .mobile-nav button { min-width: 0; min-height: 52px; display: grid; place-content: center; justify-items: center; gap: 3px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--subtle); cursor: pointer; }
+  .mobile-nav button span { font-size: 18px; line-height: 1; }
+  .mobile-nav button strong { font-size: 12px; line-height: 1.2; font-weight: 700; }
+  .mobile-nav button.active { border-color: var(--active-line); background: var(--mint-dark); color: var(--mint); }
+  .pane-heading { height: 62px; padding: 0 14px; font-size: 15px; }
+  .pane-actions { gap: 10px; }
+  .navigation-back { width: 40px; height: 40px; font-size: 20px; }
+  .new-button, .text-button { min-height: 40px; padding: 0 12px; font-size: 13px; }
+  .project-list, .thread-list, .changes-content { height: calc(100% - 62px); }
+  .project-list, .thread-list { padding: 10px; }
+  .project-row { min-height: 62px; gap: 12px; padding: 10px 12px; }
+  .project-avatar { width: 42px; height: 42px; font-size: 12px; }
+  .thread-row { min-height: 62px; padding: 13px 12px; }
+  .project-row strong, .thread-row strong { font-size: 15px; }
+  .project-row small, .thread-row small { font-size: 12px; }
+  .empty-small { font-size: 14px; }
+  .conversation-header { min-width: 0; min-height: 0; flex-direction: column; align-items: stretch; gap: 10px; padding: 13px 14px; overflow: visible; }
   .conversation-title { width: 100%; }
-  .conversation-header h2 { max-width: none; font-size: 14px; }
-  .header-controls { width: 100%; min-width: 0; display: grid; gap: 7px; }
-  .run-states { width: 100%; min-width: 0; flex: none; flex-wrap: wrap; justify-content: flex-start; gap: 5px; }
-  .task-state, .connection-state { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 8px; font-size: 8px; }
-  .run-state { min-height: 28px; display: inline-flex; align-items: center; padding: 5px 8px; }
-  .context-meter { padding: 0 7px; }
+  .conversation-header .eyebrow { margin-bottom: 6px; font-size: 11px; }
+  .conversation-header h2 { max-width: none; font-size: 17px; line-height: 1.3; }
+  .header-controls { width: 100%; min-width: 0; display: grid; gap: 8px; }
+  .run-states { width: 100%; min-width: 0; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr) 38px; align-items: stretch; gap: 5px; }
+  .task-state, .connection-state, .run-state, .context-meter { min-width: 0; min-height: 36px; justify-content: center; border-radius: 10px; padding: 0 7px; font-size: 11px; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+  .connection-state { grid-column: 1 / -1; }
+  .context-meter { gap: 5px; }
   .context-meter > span:last-child { display: inline; }
-  .session-menu-button { margin-left: auto; }
+  .context-meter-ring { width: 9px; height: 9px; }
+  .session-menu-button { width: 38px; height: 36px; margin: 0; border: 1px solid var(--line); font-size: 15px; }
   .usage-limits { width: 100%; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .usage-limit { min-width: 0; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); padding: 7px 9px; }
+  .usage-limit { min-width: 0; min-height: 52px; display: grid; align-content: center; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: 8px 10px; }
   .usage-limit strong, .usage-limit span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .usage-limit strong { color: var(--muted); font-size: 9px; }
-  .usage-limit span { color: var(--subtle); font-size: 8px; }
+  .usage-limit strong { color: var(--muted); font-size: 12px; }
+  .usage-limit span { color: var(--subtle); font-size: 11px; }
   .usage-limit.watch { border-color: var(--notice-line); }
   .usage-limit.watch strong { color: var(--amber); }
   .usage-limit.critical { border-color: var(--danger-line); background: var(--danger-bg); }
   .usage-limit.critical strong { color: var(--danger); }
-  .usage-limit-alert { grid-column: 1 / -1; border: 1px solid var(--danger-line); border-radius: 8px; background: var(--danger-bg); color: var(--danger); padding: 6px 8px; font-size: 9px; text-align: center; }
-  .message-scroll { width: 100%; max-width: 100%; padding: 20px 15px 135px; }
+  .usage-limit-alert { grid-column: 1 / -1; border: 1px solid var(--danger-line); border-radius: 9px; background: var(--danger-bg); color: var(--danger); padding: 8px 10px; font-size: 12px; text-align: center; }
+  .message-scroll { width: 100%; max-width: 100%; padding: 22px 15px 160px; }
   .message, .activity-card, .activity-group, .approval-card, .approval-group, .history-notice, .thinking { width: 100%; max-width: 100%; }
-  .message-text { font-size: 13px; }
+  .message { margin-bottom: 24px; }
+  .message-label { font-size: 11px; }
+  .message-text { font-size: 16px; line-height: 1.65; }
   .message.user .message-text { max-width: 90%; }
-  .composer { left: 10px; right: 10px; bottom: 10px; }
+  .history-notice { padding: 12px 13px; font-size: 13px; }
+  .activity-card summary { min-height: 54px; padding: 11px 12px; }
+  .activity-card strong, .activity-group > summary strong, .approval-group > summary strong { font-size: 13px; }
+  .activity-card small, .activity-group > summary small, .approval-group > summary small { font-size: 11px; }
+  .activity-icon { width: 34px; height: 34px; font-size: 12px; }
+  .activity-card pre, .diff-block pre { font-size: 12px; line-height: 1.6; }
+  .approval-card { padding: 16px; }
+  .approval-card h3 { font-size: 16px; }
+  .approval-card code { font-size: 13px; }
+  .approval-actions .primary, .approval-actions .secondary { min-height: 44px; font-size: 14px; }
+  .thinking { font-size: 13px; }
+  .composer { left: 10px; right: 10px; bottom: 10px; border-radius: 18px; padding: 8px 58px 46px 8px; }
+  .composer textarea { min-height: 56px; padding: 11px; font-size: 16px; line-height: 1.5; }
   .composer small { display: none; }
-  .composer { padding-bottom: 36px; }
-  .composer-footer { left: 16px; right: 60px; justify-content: flex-start; }
-  .model-picker select { max-width: min(190px, 52vw); }
+  .composer-footer { left: 18px; right: 64px; bottom: 9px; justify-content: flex-start; gap: 10px; }
+  .composer-tools { gap: 10px; }
+  .attach-button { min-height: 32px; font-size: 12px; }
+  .model-picker { gap: 5px; font-size: 12px; }
+  .model-picker select { max-width: min(165px, 45vw); font-size: 13px; }
+  .send-button { width: 44px; height: 44px; right: 10px; bottom: 12px; font-size: 24px; }
   .starter-grid { margin-top: 8vh; grid-template-columns: 1fr; }
-  .starter-grid button { min-height: 82px; }
+  .starter-grid button { min-height: 88px; font-size: 14px; }
   .empty-workspace { padding: 20px; }
   .empty-workspace h2 { font-size: 25px; }
   .dialog-backdrop { align-items: end; padding: 10px; }
   .dialog { border-radius: 20px 20px 13px 13px; padding: 22px; }
+  .dialog label { font-size: 14px; }
+  .dialog input, .dialog textarea, .login-card input { font-size: 16px; }
+  .dialog-copy, .field-help, .session-option-list span, .context-card small { font-size: 13px; }
+  .session-option-list strong, .context-card strong { font-size: 15px; }
+  .error-banner { font-size: 13px; }
+
+  .changes-pane .pane-heading { font-size: 15px; }
+  .branch-row, .file-row { font-size: 13px; }
+  .branch-row > span:last-child, .workflow-indicator small { font-size: 10px; }
+  .workflow-indicator strong, .code-index-box p, .code-index-actions, .checks-heading strong, .check-step summary strong, .preview-box strong, .preview-box p, .preview-box details summary, .deployment-heading strong, .deployment-box label, .deployment-box details summary, .deployment-settings > summary { font-size: 12px; }
+  .checks-box > p, .check-step summary small, .preview-box code, .deployment-box p, .deployment-box code { font-size: 11px; }
+  .commit-box textarea, .commit-box button, .preview-actions a, .production-link, .notification-toggle, .deployment-box input { font-size: 13px; }
+}
+
+@media (max-width: 360px) {
+  .task-state, .run-state, .context-meter { padding: 0 5px; font-size: 10px; }
+  .context-meter { gap: 3px; }
+  .usage-limit { padding-inline: 8px; }
+  .usage-limit strong { font-size: 11px; }
+  .usage-limit span { font-size: 10px; }
+  .model-picker select { max-width: 130px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

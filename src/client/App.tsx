@@ -618,7 +618,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
   }
 
   return (
-    <div className="app-shell" data-panel={mobilePanel}>
+    <div className="app-shell" data-panel={mobilePanel} data-navigation={desktopNavigationView}>
       <header className="topbar">
         <Brand />
         <div className="topbar-meta">
@@ -688,7 +688,8 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       </aside>
 
       <aside className="threads-pane">
-        <div className="pane-heading">
+        <div className="pane-heading navigation-thread-heading">
+          <button className="navigation-back" onClick={() => setDesktopNavigationView("projects")} aria-label="Back to projects">←</button>
           <span>{showArchived ? "Archived" : project?.name ?? "Sessions"}</span>
           <div className="pane-actions">
             <button className="text-button" onClick={() => setShowArchived((current) => !current)} disabled={!project || busy}>{showArchived ? "Active" : "Archived"}</button>
@@ -716,7 +717,7 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
               <div className="conversation-title"><p className="eyebrow">{project?.name}</p><h2>{thread.name || thread.preview || "New session"}</h2></div>
               <div className="header-controls">
                 <div className="run-states">
-                  {git?.isolated && <span className="task-state" title="This session works in a separate Git task branch.">Branch: task</span>}
+                  <span className="task-state" title={git?.isolated ? "This session works in a separate Git task branch." : "This session works on the main project branch."}>Branch: {git ? git.isolated ? "task" : "main" : "…"}</span>
                   {connectionState === "reconnecting" && <span className="connection-state">Reconnecting…</span>}
                   <ContextMeter usage={contextUsage} disabled={running || busy} onClick={() => setManagingSession(true)} />
                   <span className={`run-state ${running ? "running" : ""}`}>Codex: {compacting ? "Compacting" : running ? "Working" : "Ready"}</span>
@@ -753,9 +754,9 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       </aside>
 
       <nav className="mobile-nav">
-        <button className={mobilePanel === "projects" ? "active" : ""} onClick={() => setMobilePanel("projects")}>Projects</button>
-        <button className={mobilePanel === "chat" ? "active" : ""} onClick={() => setMobilePanel("chat")}>Chat</button>
-        <button className={mobilePanel === "changes" ? "active" : ""} onClick={() => setMobilePanel("changes")}>Changes</button>
+        <button type="button" className={mobilePanel === "projects" ? "active" : ""} aria-current={mobilePanel === "projects" ? "page" : undefined} onClick={() => { setDesktopNavigationView("projects"); setMobilePanel("projects"); }}><span aria-hidden="true">▦</span><strong>Projects</strong></button>
+        <button type="button" className={mobilePanel === "chat" ? "active" : ""} aria-current={mobilePanel === "chat" ? "page" : undefined} onClick={() => setMobilePanel("chat")}><span aria-hidden="true">✦</span><strong>Chat</strong></button>
+        <button type="button" className={mobilePanel === "changes" ? "active" : ""} aria-current={mobilePanel === "changes" ? "page" : undefined} onClick={() => setMobilePanel("changes")}><span aria-hidden="true">±</span><strong>Changes</strong></button>
       </nav>
 
       {addingProject && <AddProjectDialog onClose={() => setAddingProject(false)} onCreated={projectAdded} />}
