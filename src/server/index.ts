@@ -477,8 +477,15 @@ app.get("/api/projects/:projectId/threads/:threadId/events", async (request, res
   response.setHeader("Connection", "keep-alive");
   response.flushHeaders();
 
-  for (const event of events.recent(threadId)) writeSse(response, event);
   const unsubscribe = events.subscribe(threadId, (event) => writeSse(response, event));
+  for (const event of events.recent(threadId)) writeSse(response, event);
+  writeSse(response, {
+    id: `approval-sync-${Date.now()}`,
+    threadId,
+    type: "approval_sync",
+    timestamp: new Date().toISOString(),
+    payload: { requestIds: codex.pendingApprovalIds(threadId) },
+  });
   const heartbeat = setInterval(() => response.write(": heartbeat\n\n"), 20_000);
   request.on("close", () => {
     clearInterval(heartbeat);
@@ -501,6 +508,7 @@ app.post("/api/projects/:projectId/threads/:threadId/approvals/:requestId", requ
     threadId,
     decision as "accept" | "decline" | "cancel",
   );
+  events.publish(threadId, "approval_resolved", { requestId: param(request, "requestId") });
   response.status(204).end();
 });
 
@@ -709,6 +717,7 @@ function clientIp(request: Request): string {
 
 function errorStatus(message: string): number {
   if (message.includes("not found")) return 404;
+  if (message === "Approval request is no longer pending.") return 410;
   if (message.includes("already exists") || message.includes("already in progress") || message.includes("currently working") || message.includes("Another active session is using")) return 409;
   if (message === "OTP is invalid or expired." || message === "Current password is incorrect.") return 401;
   if (message.startsWith("Wait before requesting another OTP") || message.startsWith("OTP requests are temporarily limited")) return 429;

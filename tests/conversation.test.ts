@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildConversationTimeline, type ActivityItem, type Approval, type ChatMessage } from "../src/client/conversation.js";
+import { buildConversationTimeline, retainPendingApprovals, type ActivityItem, type Approval, type ChatMessage } from "../src/client/conversation.js";
 
 test("conversation timeline keeps chat, activity, and approval events in chronological order", () => {
   const messages: ChatMessage[] = [
@@ -41,4 +41,14 @@ test("conversation timeline only groups adjacent operational items", () => {
   assert.deepEqual(timeline.map((block) => block.kind), ["activity-group", "message", "activity-group"]);
   assert.equal(timeline[0]?.kind === "activity-group" && timeline[0].activities.length, 1);
   assert.equal(timeline[2]?.kind === "activity-group" && timeline[2].activities.length, 1);
+});
+
+test("approval synchronization removes browser cards that are no longer pending", () => {
+  const approvals: Approval[] = [
+    { requestId: "stale", reason: "Old request", order: 1 },
+    { requestId: "current", reason: "Current request", order: 2 },
+  ];
+
+  assert.deepEqual(retainPendingApprovals(approvals, ["current"]), [approvals[1]]);
+  assert.deepEqual(retainPendingApprovals(approvals, []), []);
 });

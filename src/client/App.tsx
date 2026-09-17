@@ -3,7 +3,7 @@ import { api, type Attachment, type CodexModel, type DeploymentState, type GitSt
 import { CheckPanel } from "./CheckPanel";
 import { CodeIndexPanel } from "./CodeIndexPanel";
 import { Composer, draftStorageKey } from "./Composer";
-import { buildConversationTimeline, type ActivityItem, type Approval, type ChatMessage } from "./conversation";
+import { buildConversationTimeline, retainPendingApprovals, type ActivityItem, type Approval, type ChatMessage } from "./conversation";
 import { applyTheme, readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from "./theme";
 
 type AuthState = Session | null | undefined;
@@ -400,6 +400,15 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
           order: existing?.order ?? order,
         }];
       });
+    } else if (event.type === "approval_resolved") {
+      const requestId = String(event.payload.requestId ?? "");
+      setApprovals((current) => current.filter((item) => item.requestId !== requestId));
+    } else if (event.type === "approval_sync") {
+      const requestIds = Array.isArray(event.payload.requestIds)
+        ? event.payload.requestIds.filter((value): value is string => typeof value === "string")
+        : [];
+      setApprovals((current) => retainPendingApprovals(current, requestIds));
+      setError((current) => current === "Approval request is no longer pending." ? "" : current);
     } else if (event.type === "status") {
       const method = String(event.payload.method ?? "");
       if (method === "turn/started") setRunning(true);
@@ -516,7 +525,13 @@ function Workspace({ session, theme, onThemeChange, onLoggedOut }: { session: Se
       await api.post(`/api/projects/${project.id}/threads/${thread.id}/approvals/${approval.requestId}`, { decision });
       setApprovals((current) => current.filter((item) => item.requestId !== approval.requestId));
     } catch (cause) {
-      setError((cause as Error).message);
+      const message = (cause as Error).message;
+      if (message === "Approval request is no longer pending.") {
+        setApprovals((current) => current.filter((item) => item.requestId !== approval.requestId));
+        setContinuityNotice("That approval had expired and was removed. Pending approvals are now synchronized with Codex.");
+      } else {
+        setError(message);
+      }
     }
   }
 

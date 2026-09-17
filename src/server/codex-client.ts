@@ -219,6 +219,12 @@ export class CodexClient {
     this.approvals.delete(externalId);
   }
 
+  pendingApprovalIds(threadId: string): string[] {
+    return [...this.approvals.entries()]
+      .filter(([, approval]) => extractThreadId(approval.params) === threadId)
+      .map(([externalId]) => externalId);
+  }
+
   stop(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;

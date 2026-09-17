@@ -61,3 +61,8 @@ export function buildConversationTimeline(
   }
   return blocks;
 }
+
+export function retainPendingApprovals(approvals: Approval[], requestIds: string[]): Approval[] {
+  const pending = new Set(requestIds);
+  return approvals.filter((approval) => pending.has(approval.requestId));
+}
